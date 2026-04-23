@@ -4,9 +4,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const bets = getBetsData();
-    const bankroll = getBankrollData();
-    const config = getConfigData();
+    const [bets, bankroll, config] = await Promise.all([
+      getBetsData(),
+      getBankrollData(),
+      getConfigData(),
+    ]);
 
     return Response.json(
       { bets, bankroll, config },
@@ -19,9 +21,9 @@ export async function GET() {
       }
     );
   } catch (error) {
-    console.error("Error reading data files:", error);
+    console.error("Error fetching data:", error);
     return Response.json(
-      { error: "Failed to read data files" },
+      { error: "Failed to fetch data" },
       { status: 500 }
     );
   }

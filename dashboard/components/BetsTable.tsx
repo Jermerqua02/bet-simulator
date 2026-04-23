@@ -18,11 +18,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import BetModal from "./BetModal";
-import type { Bet } from "@/lib/types";
+import type { Bet, LiveScoreData } from "@/lib/types";
 import { Filter } from "lucide-react";
 
 interface BetsTableProps {
   bets: Bet[];
+  liveScores?: Map<string, LiveScoreData>;
 }
 
 function formatOdds(odds: number): string {
@@ -65,7 +66,37 @@ function getSportBadgeColor(sport: string): string {
   }
 }
 
-function getResultBadge(result: string | null) {
+function getResultBadge(
+  result: string | null,
+  liveScore: LiveScoreData | undefined
+) {
+  // If the bet is pending and we have live score data, show contextual badges
+  if (result === "pending" || result === null) {
+    if (liveScore?.isLive) {
+      return (
+        <Badge className="border-0 bg-emerald-500/15 text-emerald-400 text-xs gap-1.5">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          </span>
+          LIVE
+        </Badge>
+      );
+    }
+    if (liveScore?.isFinal) {
+      return (
+        <Badge className="border-0 bg-zinc-500/15 text-zinc-300 text-xs">
+          FINAL
+        </Badge>
+      );
+    }
+    return (
+      <Badge className="border-0 bg-amber-500/15 text-amber-400 text-xs">
+        PENDING
+      </Badge>
+    );
+  }
+
   switch (result) {
     case "win":
       return (
@@ -88,7 +119,29 @@ function getResultBadge(result: string | null) {
   }
 }
 
-export default function BetsTable({ bets }: BetsTableProps) {
+function LiveScoreInline({ score }: { score: LiveScoreData }) {
+  const homeWinning = score.homeScore > score.awayScore;
+  const awayWinning = score.awayScore > score.homeScore;
+
+  return (
+    <span className="ml-2 inline-flex items-center gap-1 text-xs text-zinc-400">
+      <span className={awayWinning ? "text-emerald-400 font-semibold" : ""}>
+        {score.awayScore}
+      </span>
+      <span className="text-zinc-600">-</span>
+      <span className={homeWinning ? "text-emerald-400 font-semibold" : ""}>
+        {score.homeScore}
+      </span>
+      {score.isLive && (
+        <span className="text-[10px] text-zinc-500 ml-1">
+          {score.statusText}
+        </span>
+      )}
+    </span>
+  );
+}
+
+export default function BetsTable({ bets, liveScores }: BetsTableProps) {
   const [selectedBet, setSelectedBet] = useState<Bet | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [sportFilter, setSportFilter] = useState<string>("all");
@@ -118,6 +171,11 @@ export default function BetsTable({ bets }: BetsTableProps) {
         filtered = filtered.filter(
           (b) => b.result === "pending" || b.result === null
         );
+      } else if (resultFilter === "live") {
+        filtered = filtered.filter((b) => {
+          const score = liveScores?.get(b.gameId);
+          return (b.result === "pending" || b.result === null) && score?.isLive;
+        });
       } else {
         filtered = filtered.filter((b) => b.result === resultFilter);
       }
@@ -129,12 +187,20 @@ export default function BetsTable({ bets }: BetsTableProps) {
     );
 
     return filtered;
-  }, [bets, sportFilter, strategyFilter, resultFilter]);
+  }, [bets, sportFilter, strategyFilter, resultFilter, liveScores]);
 
   const handleRowClick = (bet: Bet) => {
     setSelectedBet(bet);
     setModalOpen(true);
   };
+
+  // Count live games for the filter label
+  const liveCount = liveScores
+    ? bets.filter((b) => {
+        const score = liveScores.get(b.gameId);
+        return (b.result === "pending" || b.result === null) && score?.isLive;
+      }).length
+    : 0;
 
   if (bets.length === 0) {
     return (
@@ -196,6 +262,11 @@ export default function BetsTable({ bets }: BetsTableProps) {
               <SelectItem value="win">Win</SelectItem>
               <SelectItem value="loss">Loss</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
+              {liveCount > 0 && (
+                <SelectItem value="live">
+                  Live ({liveCount})
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -222,58 +293,75 @@ export default function BetsTable({ bets }: BetsTableProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredBets.map((bet) => (
-              <TableRow
-                key={bet.id}
-                className="cursor-pointer border-zinc-800 transition-colors hover:bg-zinc-800/60"
-                onClick={() => handleRowClick(bet)}
-              >
-                <TableCell className="text-sm text-zinc-400 whitespace-nowrap">
-                  {formatDate(bet.date)}
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    className={`text-xs ${getSportBadgeColor(bet.sport)}`}
-                  >
-                    {bet.sport}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-sm text-zinc-300 max-w-[220px] truncate">
-                  {bet.event}
-                </TableCell>
-                <TableCell className="text-sm font-medium text-zinc-200 whitespace-nowrap">
-                  {bet.pick}
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm text-zinc-300">
-                  {formatOdds(bet.odds)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-sm text-zinc-300">
-                  {formatCurrency(bet.stake)}
-                </TableCell>
-                <TableCell className="text-sm text-zinc-400 whitespace-nowrap">
-                  {formatStrategyName(bet.strategy)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-sm text-emerald-400">
-                  {(bet.edge * 100).toFixed(1)}%
-                </TableCell>
-                <TableCell className="text-center">
-                  {getResultBadge(bet.result)}
-                </TableCell>
-                <TableCell
-                  className={`text-right tabular-nums text-sm font-medium ${
-                    bet.pnl === null || bet.pnl === undefined
-                      ? "text-zinc-500"
-                      : bet.pnl >= 0
-                      ? "text-emerald-400"
-                      : "text-rose-400"
+            {filteredBets.map((bet) => {
+              const liveScore = liveScores?.get(bet.gameId);
+              const showInlineScore =
+                liveScore &&
+                (liveScore.isLive || liveScore.isFinal) &&
+                (bet.result === "pending" || bet.result === null);
+
+              return (
+                <TableRow
+                  key={bet.id}
+                  className={`cursor-pointer border-zinc-800 transition-colors hover:bg-zinc-800/60 ${
+                    liveScore?.isLive && (bet.result === "pending" || bet.result === null)
+                      ? "bg-emerald-500/[0.03]"
+                      : ""
                   }`}
+                  onClick={() => handleRowClick(bet)}
                 >
-                  {bet.pnl !== null && bet.pnl !== undefined
-                    ? formatCurrency(bet.pnl)
-                    : "--"}
-                </TableCell>
-              </TableRow>
-            ))}
+                  <TableCell className="text-sm text-zinc-400 whitespace-nowrap">
+                    {formatDate(bet.date)}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      className={`text-xs ${getSportBadgeColor(bet.sport)}`}
+                    >
+                      {bet.sport}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-zinc-300 max-w-[220px]">
+                    <div className="flex items-center">
+                      <span className="truncate">{bet.event}</span>
+                      {showInlineScore && (
+                        <LiveScoreInline score={liveScore} />
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm font-medium text-zinc-200 whitespace-nowrap">
+                    {bet.pick}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-sm text-zinc-300">
+                    {formatOdds(bet.odds)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-sm text-zinc-300">
+                    {formatCurrency(bet.stake)}
+                  </TableCell>
+                  <TableCell className="text-sm text-zinc-400 whitespace-nowrap">
+                    {formatStrategyName(bet.strategy)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-sm text-emerald-400">
+                    {(bet.edge * 100).toFixed(1)}%
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {getResultBadge(bet.result, liveScore)}
+                  </TableCell>
+                  <TableCell
+                    className={`text-right tabular-nums text-sm font-medium ${
+                      bet.pnl === null || bet.pnl === undefined
+                        ? "text-zinc-500"
+                        : bet.pnl >= 0
+                        ? "text-emerald-400"
+                        : "text-rose-400"
+                    }`}
+                  >
+                    {bet.pnl !== null && bet.pnl !== undefined
+                      ? formatCurrency(bet.pnl)
+                      : "--"}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>

@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import type {
   BetsData,
   BankrollData,
@@ -9,52 +7,51 @@ import type {
   StrategyStats,
 } from "./types";
 
-function getDataDir(): string {
-  // Build step copies ../data into ./data
-  // Check multiple possible locations for the data directory
-  const candidates = [
-    path.join(process.cwd(), "data"),
-    path.join(process.cwd(), "..", "data"),
-    path.join(__dirname, "..", "data"),
-    path.join(__dirname, "..", "..", "data"),
-  ];
-  for (const dir of candidates) {
-    try {
-      if (fs.existsSync(path.join(dir, "bets.json"))) return dir;
-    } catch {
-      continue;
-    }
-  }
-  // Default fallback
-  return path.join(process.cwd(), "data");
-}
+const GITHUB_RAW_BASE =
+  "https://raw.githubusercontent.com/Jermerqua02/bet-simulator/main/data";
 
-function readJsonFile<T>(filename: string): T {
-  const filePath = path.join(getDataDir(), filename);
+const DEFAULT_BETS: BetsData = { bets: [] };
+const DEFAULT_BANKROLL: BankrollData = {
+  startingBankroll: 10000,
+  currentBankroll: 10000,
+  history: [],
+};
+const DEFAULT_CONFIG: ConfigData = {
+  sports: ["NBA", "MLB", "NHL"],
+  defaultStake: 25,
+  maxStakePercent: 0.05,
+  startingBankroll: 10000,
+  strategies: {},
+  minEdge: 0.03,
+  dailyBetTarget: 8,
+};
+
+async function fetchJson<T>(filename: string, fallback: T): Promise<T> {
   try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    return JSON.parse(raw) as T;
-  } catch {
-    // Return empty defaults if file not found
-    if (filename === "bets.json") return { bets: [] } as T;
-    if (filename === "bankroll.json")
-      return { startingBankroll: 10000, currentBankroll: 10000, history: [] } as T;
-    if (filename === "config.json")
-      return { sports: [], defaultStake: 25, maxStakePercent: 0.05, startingBankroll: 10000, strategies: {}, minEdge: 0.03, dailyBetTarget: 8 } as T;
-    return {} as T;
+    const res = await fetch(`${GITHUB_RAW_BASE}/${filename}`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) {
+      console.error(`Failed to fetch ${filename}: ${res.status} ${res.statusText}`);
+      return fallback;
+    }
+    return (await res.json()) as T;
+  } catch (error) {
+    console.error(`Error fetching ${filename}:`, error);
+    return fallback;
   }
 }
 
-export function getBetsData(): BetsData {
-  return readJsonFile<BetsData>("bets.json");
+export async function getBetsData(): Promise<BetsData> {
+  return fetchJson<BetsData>("bets.json", DEFAULT_BETS);
 }
 
-export function getBankrollData(): BankrollData {
-  return readJsonFile<BankrollData>("bankroll.json");
+export async function getBankrollData(): Promise<BankrollData> {
+  return fetchJson<BankrollData>("bankroll.json", DEFAULT_BANKROLL);
 }
 
-export function getConfigData(): ConfigData {
-  return readJsonFile<ConfigData>("config.json");
+export async function getConfigData(): Promise<ConfigData> {
+  return fetchJson<ConfigData>("config.json", DEFAULT_CONFIG);
 }
 
 export function formatStrategyName(name: string): string {

@@ -93,3 +93,19 @@ export interface DashboardData {
   bankroll: BankrollData;
   config: ConfigData;
 }
+
+export interface LiveScoreData {
+  gameId: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number;
+  awayScore: number;
+  /** e.g. "Q3 8:42", "Top 5th", "2nd Period 12:30", "Pre-game 7:10 PM ET", "Final" */
+  statusText: string;
+  /** Whether the game is currently in progress */
+  isLive: boolean;
+  /** Whether the game has finished */
+  isFinal: boolean;
+  /** Whether the game hasn't started yet */
+  isPreGame: boolean;
+}
