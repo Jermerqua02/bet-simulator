@@ -118,6 +118,82 @@ export default function DashboardClient({
     (b) => (b.result ?? "").toUpperCase() === "PENDING" || b.result === null
   );
 
+  /** Auto-resolve pending moneyline bets when ESPN shows game as FINAL */
+  useEffect(() => {
+    if (liveScores.size === 0) return;
+
+    const updates: Array<{ id: string; result: string; pnl: number }> = [];
+
+    for (const bet of bets) {
+      const r = (bet.result ?? "").toUpperCase();
+      if (r === "WIN" || r === "LOSS") continue;
+      // Only auto-resolve simple moneyline bets (parlays need all legs)
+      if (bet.betType !== "moneyline") continue;
+
+      const score = liveScores.get(bet.gameId);
+      if (!score?.isFinal) continue;
+
+      // Determine winner from final score
+      const homeWon = score.homeScore > score.awayScore;
+      const pickIsHome = bet.pick === bet.homeTeam;
+      const pickIsAway = bet.pick === bet.awayTeam;
+
+      // Fuzzy fallback if exact match fails
+      const pickMatchesHome =
+        pickIsHome ||
+        bet.homeTeam.includes(bet.pick) ||
+        bet.pick.includes(bet.homeTeam);
+      const pickMatchesAway =
+        pickIsAway ||
+        bet.awayTeam.includes(bet.pick) ||
+        bet.pick.includes(bet.awayTeam);
+
+      if (!pickMatchesHome && !pickMatchesAway) continue;
+
+      const won = pickMatchesHome ? homeWon : !homeWon;
+
+      let pnl: number;
+      if (won) {
+        if (bet.payout) {
+          pnl = bet.payout - bet.stake;
+        } else if (bet.odds > 0) {
+          pnl = bet.stake * (bet.odds / 100);
+        } else {
+          pnl = bet.stake * (100 / Math.abs(bet.odds));
+        }
+      } else {
+        pnl = -bet.stake;
+      }
+
+      updates.push({
+        id: bet.id,
+        result: won ? "WIN" : "LOSS",
+        pnl: Math.round(pnl * 100) / 100,
+      });
+    }
+
+    if (updates.length > 0) {
+      setBets((prev) =>
+        prev.map((bet) => {
+          const update = updates.find((u) => u.id === bet.id);
+          if (!update) return bet;
+          return {
+            ...bet,
+            result: update.result,
+            pnl: update.pnl,
+            resolvedAt: new Date().toISOString(),
+          };
+        })
+      );
+
+      const totalPnl = updates.reduce((sum, u) => sum + u.pnl, 0);
+      setBankroll((prev) => ({
+        ...prev,
+        currentBankroll: prev.currentBankroll + totalPnl,
+      }));
+    }
+  }, [liveScores, bets]);
+
   const stats: DashboardStats = calculateStats(bets, bankroll);
   const strategyStats: StrategyStatsType[] = getStrategyStats(bets);
 

@@ -150,8 +150,8 @@ function ScoreCard({
       <div className="mt-3 flex items-center justify-between border-t border-zinc-800 pt-2">
         <span className="text-xs text-zinc-500">{score.statusText}</span>
         {score.isFinal &&
-          bet.result !== "win" &&
-          bet.result !== "loss" && (
+          (bet.result ?? "").toUpperCase() !== "WIN" &&
+          (bet.result ?? "").toUpperCase() !== "LOSS" && (
             <span className="text-[10px] font-semibold uppercase text-amber-400 bg-amber-500/15 px-1.5 py-0.5 rounded">
               AWAITING RESOLUTION
             </span>
