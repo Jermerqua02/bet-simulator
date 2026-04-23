@@ -6,7 +6,6 @@ import StatsRow from "@/components/StatsRow";
 import BankrollChart from "@/components/BankrollChart";
 import StrategyTable from "@/components/StrategyTable";
 import BetsTable from "@/components/BetsTable";
-import AllBetsLog from "@/components/AllBetsLog";
 import LiveScores from "@/components/LiveScores";
 import { calculateStats, getStrategyStats } from "@/lib/data";
 import type {
@@ -332,7 +331,6 @@ export default function DashboardClient({
       />
       <StrategyTable strategies={strategyStats} />
       <BetsTable bets={bets} liveScores={liveScores} />
-      <AllBetsLog bets={bets} />
 
       {/* Footer */}
       <footer className="mt-8 border-t border-zinc-800 pt-6 text-center">
