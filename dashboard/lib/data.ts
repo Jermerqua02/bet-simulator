@@ -9,10 +9,16 @@ import type {
   StrategyStats,
 } from "./types";
 
-const DATA_DIR = path.join(process.cwd(), "..", "data");
+function getDataDir(): string {
+  // On Vercel, data is copied into ./data during build
+  const localDir = path.join(process.cwd(), "data");
+  if (fs.existsSync(localDir)) return localDir;
+  // Local dev: data lives in the parent directory
+  return path.join(process.cwd(), "..", "data");
+}
 
 function readJsonFile<T>(filename: string): T {
-  const filePath = path.join(DATA_DIR, filename);
+  const filePath = path.join(getDataDir(), filename);
   const raw = fs.readFileSync(filePath, "utf-8");
   return JSON.parse(raw) as T;
 }
