@@ -144,42 +144,63 @@ def _parse_odds(event: dict) -> dict:
     if not dk_odds and odds_list:
         dk_odds = odds_list[0]
 
+    empty = {
+        "homeMoneyline": None,
+        "awayMoneyline": None,
+        "spread": None,
+        "spreadOdds": None,
+        "overUnder": None,
+        "overOdds": None,
+        "underOdds": None,
+        "provider": None,
+    }
+
     if not dk_odds:
-        return {
-            "homeMoneyline": None,
-            "awayMoneyline": None,
-            "spread": None,
-            "spreadOdds": None,
-            "overUnder": None,
-            "overOdds": None,
-            "underOdds": None,
-            "provider": None,
-        }
+        return empty
 
     home_ml = None
     away_ml = None
 
-    # Try homeTeamOdds / awayTeamOdds (common structure)
-    home_team_odds = dk_odds.get("homeTeamOdds", {})
-    away_team_odds = dk_odds.get("awayTeamOdds", {})
-    if home_team_odds:
-        home_ml = home_team_odds.get("moneyLine")
-    if away_team_odds:
-        away_ml = away_team_odds.get("moneyLine")
+    # Primary path: moneyline.home.close.odds / moneyline.away.close.odds
+    ml_obj = dk_odds.get("moneyline", {})
+    if ml_obj:
+        home_ml = _safe_get(ml_obj, "home", "close", "odds")
+        away_ml = _safe_get(ml_obj, "away", "close", "odds")
 
-    # Fallback: top-level moneylineWinner / moneyLine
+    # Fallback: homeTeamOdds / awayTeamOdds (older ESPN structure)
     if home_ml is None and away_ml is None:
-        home_ml = dk_odds.get("homeMoneyLine") or dk_odds.get("homeTeamMoneyLine")
-        away_ml = dk_odds.get("awayMoneyLine") or dk_odds.get("awayTeamMoneyLine")
+        home_team_odds = dk_odds.get("homeTeamOdds", {})
+        away_team_odds = dk_odds.get("awayTeamOdds", {})
+        if home_team_odds:
+            home_ml = home_team_odds.get("moneyLine")
+        if away_team_odds:
+            away_ml = away_team_odds.get("moneyLine")
+
+    # Fallback: parse from "details" string like "PHI -115"
+    if home_ml is None and away_ml is None:
+        details = dk_odds.get("details", "")
+        if details:
+            # details often shows the favorite, but we can't reliably
+            # extract both lines from it, so skip this fallback
+            pass
+
+    # Spread info from pointSpread object
+    spread_val = _try_float(dk_odds.get("spread"))
+    spread_home_odds = _try_int(_safe_get(dk_odds, "pointSpread", "home", "close", "odds"))
+
+    # Over/under from total object
+    over_under = _try_float(dk_odds.get("overUnder"))
+    over_odds = _try_int(_safe_get(dk_odds, "total", "over", "close", "odds"))
+    under_odds = _try_int(_safe_get(dk_odds, "total", "under", "close", "odds"))
 
     return {
         "homeMoneyline": _try_int(home_ml),
         "awayMoneyline": _try_int(away_ml),
-        "spread": _try_float(dk_odds.get("spread")),
-        "spreadOdds": _try_int(dk_odds.get("spreadOdds")),
-        "overUnder": _try_float(dk_odds.get("overUnder")),
-        "overOdds": _try_int(dk_odds.get("overOdds")),
-        "underOdds": _try_int(dk_odds.get("underOdds")),
+        "spread": spread_val,
+        "spreadOdds": spread_home_odds,
+        "overUnder": over_under,
+        "overOdds": over_odds,
+        "underOdds": under_odds,
         "provider": _safe_get(dk_odds, "provider", "name", default="Unknown"),
     }
 

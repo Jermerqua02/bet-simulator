@@ -1,5 +1,15 @@
 {
   "startingBankroll": 10000,
   "currentBankroll": 10000,
-  "history": []
+  "history": [
+    {
+      "date": "2026-04-23",
+      "pnl": 0,
+      "betsPlaced": 7,
+      "wins": 0,
+      "losses": 0,
+      "pending": 7,
+      "bankroll": 10000
+    }
+  ]
 }
