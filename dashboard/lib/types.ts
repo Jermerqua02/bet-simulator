@@ -11,15 +11,17 @@ export interface Bet {
   betType: string;
   pick: string;
   odds: number;
-  impliedProbability: number;
-  trueProbability: number;
+  impliedProb: number;
+  trueProb: number;
   edge: number;
-  expectedValue: number;
+  ev: number;
   stake: number;
+  payout?: number;
   strategy: string;
-  result: "win" | "loss" | "pending" | null;
+  result: string | null;
   pnl: number | null;
   notes: string;
+  resolvedAt?: string | null;
 }
 
 export interface BetsData {
@@ -29,10 +31,11 @@ export interface BetsData {
 export interface BankrollEntry {
   date: string;
   bankroll: number;
-  dailyPnl: number;
+  pnl: number;
   betsPlaced?: number;
   wins?: number;
   losses?: number;
+  pending?: number;
 }
 
 export interface BankrollData {
@@ -100,12 +103,8 @@ export interface LiveScoreData {
   awayTeam: string;
   homeScore: number;
   awayScore: number;
-  /** e.g. "Q3 8:42", "Top 5th", "2nd Period 12:30", "Pre-game 7:10 PM ET", "Final" */
   statusText: string;
-  /** Whether the game is currently in progress */
   isLive: boolean;
-  /** Whether the game has finished */
   isFinal: boolean;
-  /** Whether the game hasn't started yet */
   isPreGame: boolean;
 }

@@ -70,8 +70,9 @@ function getResultBadge(
   result: string | null,
   liveScore: LiveScoreData | undefined
 ) {
+  const r = (result ?? "").toUpperCase();
   // If the bet is pending and we have live score data, show contextual badges
-  if (result === "pending" || result === null) {
+  if (r === "PENDING" || result === null) {
     if (liveScore?.isLive) {
       return (
         <Badge className="border-0 bg-emerald-500/15 text-emerald-400 text-xs gap-1.5">
@@ -97,14 +98,14 @@ function getResultBadge(
     );
   }
 
-  switch (result) {
-    case "win":
+  switch (r) {
+    case "WIN":
       return (
         <Badge className="border-0 bg-emerald-500/15 text-emerald-400 text-xs">
           WIN
         </Badge>
       );
-    case "loss":
+    case "LOSS":
       return (
         <Badge className="border-0 bg-rose-500/15 text-rose-400 text-xs">
           LOSS
@@ -169,12 +170,12 @@ export default function BetsTable({ bets, liveScores }: BetsTableProps) {
     if (resultFilter !== "all") {
       if (resultFilter === "pending") {
         filtered = filtered.filter(
-          (b) => b.result === "pending" || b.result === null
+          (b) => (b.result ?? "").toUpperCase() === "PENDING" || b.result === null
         );
       } else if (resultFilter === "live") {
         filtered = filtered.filter((b) => {
           const score = liveScores?.get(b.gameId);
-          return (b.result === "pending" || b.result === null) && score?.isLive;
+          return ((b.result ?? "").toUpperCase() === "PENDING" || b.result === null) && score?.isLive;
         });
       } else {
         filtered = filtered.filter((b) => b.result === resultFilter);
@@ -198,7 +199,7 @@ export default function BetsTable({ bets, liveScores }: BetsTableProps) {
   const liveCount = liveScores
     ? bets.filter((b) => {
         const score = liveScores.get(b.gameId);
-        return (b.result === "pending" || b.result === null) && score?.isLive;
+        return ((b.result ?? "").toUpperCase() === "PENDING" || b.result === null) && score?.isLive;
       }).length
     : 0;
 
@@ -298,13 +299,13 @@ export default function BetsTable({ bets, liveScores }: BetsTableProps) {
               const showInlineScore =
                 liveScore &&
                 (liveScore.isLive || liveScore.isFinal) &&
-                (bet.result === "pending" || bet.result === null);
+                ((bet.result ?? "").toUpperCase() === "PENDING" || bet.result === null);
 
               return (
                 <TableRow
                   key={bet.id}
                   className={`cursor-pointer border-zinc-800 transition-colors hover:bg-zinc-800/60 ${
-                    liveScore?.isLive && (bet.result === "pending" || bet.result === null)
+                    liveScore?.isLive && ((bet.result ?? "").toUpperCase() === "PENDING" || bet.result === null)
                       ? "bg-emerald-500/[0.03]"
                       : ""
                   }`}

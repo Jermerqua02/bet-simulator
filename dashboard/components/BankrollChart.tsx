@@ -34,7 +34,7 @@ interface TooltipPayloadEntry {
   payload: {
     date: string;
     bankroll: number;
-    dailyPnl: number;
+    pnl: number;
   };
 }
 
@@ -48,7 +48,7 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
 
   const data = payload[0].payload;
-  const pnl = data.dailyPnl;
+  const pnl = data.pnl;
   const pnlColor = pnl >= 0 ? "text-emerald-400" : "text-rose-400";
   const pnlSign = pnl >= 0 ? "+" : "";
 

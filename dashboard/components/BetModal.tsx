@@ -72,14 +72,15 @@ function getResultStyle(result: string | null): {
   text: string;
   icon: React.ReactNode;
 } {
-  switch (result) {
-    case "win":
+  const r = (result ?? "").toUpperCase();
+  switch (r) {
+    case "WIN":
       return {
         bg: "bg-emerald-500/10 border-emerald-500/30",
         text: "text-emerald-400",
         icon: <TrendingUp className="h-5 w-5 text-emerald-400" />,
       };
-    case "loss":
+    case "LOSS":
       return {
         bg: "bg-rose-500/10 border-rose-500/30",
         text: "text-rose-400",
@@ -105,10 +106,11 @@ export default function BetModal({ bet, open, onOpenChange }: BetModalProps) {
   if (!bet) return null;
 
   const resultStyle = getResultStyle(bet.result);
+  const r = (bet.result ?? "").toUpperCase();
   const resultLabel =
-    bet.result === "win"
+    r === "WIN"
       ? "WIN"
-      : bet.result === "loss"
+      : r === "LOSS"
       ? "LOSS"
       : "PENDING";
 
@@ -183,12 +185,12 @@ export default function BetModal({ bet, open, onOpenChange }: BetModalProps) {
             </DetailItem>
             <DetailItem label="Implied Prob">
               <span className="text-sm tabular-nums text-zinc-200">
-                {(bet.impliedProbability * 100).toFixed(1)}%
+                {(bet.impliedProb * 100).toFixed(1)}%
               </span>
             </DetailItem>
             <DetailItem label="True Prob">
               <span className="text-sm tabular-nums text-zinc-200">
-                {(bet.trueProbability * 100).toFixed(1)}%
+                {(bet.trueProb * 100).toFixed(1)}%
               </span>
             </DetailItem>
             <DetailItem label="Edge">
@@ -199,10 +201,10 @@ export default function BetModal({ bet, open, onOpenChange }: BetModalProps) {
             <DetailItem label="Expected Value">
               <span
                 className={`text-sm tabular-nums ${
-                  bet.expectedValue >= 0 ? "text-emerald-400" : "text-rose-400"
+                  bet.ev >= 0 ? "text-emerald-400" : "text-rose-400"
                 }`}
               >
-                {formatCurrency(bet.expectedValue)}
+                {formatCurrency(bet.ev)}
               </span>
             </DetailItem>
             <DetailItem label="Stake">

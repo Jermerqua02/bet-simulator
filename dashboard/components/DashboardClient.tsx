@@ -115,7 +115,7 @@ export default function DashboardClient({
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const pendingBets = bets.filter(
-    (b) => b.result === "pending" || b.result === null
+    (b) => (b.result ?? "").toUpperCase() === "PENDING" || b.result === null
   );
 
   const stats: DashboardStats = calculateStats(bets, bankroll);

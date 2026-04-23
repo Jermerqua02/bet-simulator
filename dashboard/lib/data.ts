@@ -92,13 +92,14 @@ export function calculateStats(
   bets: Bet[],
   bankroll: BankrollData
 ): DashboardStats {
+  const r = (b: Bet) => (b.result ?? "").toUpperCase();
   const settledBets = bets.filter(
-    (b) => b.result === "win" || b.result === "loss"
+    (b) => r(b) === "WIN" || r(b) === "LOSS"
   );
-  const wins = settledBets.filter((b) => b.result === "win").length;
-  const losses = settledBets.filter((b) => b.result === "loss").length;
+  const wins = settledBets.filter((b) => r(b) === "WIN").length;
+  const losses = settledBets.filter((b) => r(b) === "LOSS").length;
   const pending = bets.filter(
-    (b) => b.result === "pending" || b.result === null
+    (b) => r(b) === "PENDING" || r(b) === "" || b.result === null
   ).length;
   const winRate = settledBets.length > 0 ? (wins / settledBets.length) * 100 : 0;
 
@@ -113,8 +114,8 @@ export function calculateStats(
   let bestDayPnl = 0;
   let worstDayPnl = 0;
   if (bankroll.history.length > 0) {
-    bestDayPnl = Math.max(...bankroll.history.map((h) => h.dailyPnl));
-    worstDayPnl = Math.min(...bankroll.history.map((h) => h.dailyPnl));
+    bestDayPnl = Math.max(...bankroll.history.map((h) => h.pnl));
+    worstDayPnl = Math.min(...bankroll.history.map((h) => h.pnl));
   }
 
   // Best strategy by ROI
@@ -141,10 +142,10 @@ export function calculateStats(
     count: 0,
   };
   if (sortedSettled.length > 0) {
-    const streakType = sortedSettled[0].result as "win" | "loss";
+    const streakType = r(sortedSettled[0]) === "WIN" ? "win" : "loss";
     let count = 0;
     for (const bet of sortedSettled) {
-      if (bet.result === streakType) count++;
+      if (r(bet) === streakType.toUpperCase()) count++;
       else break;
     }
     currentStreak = { type: streakType, count };
@@ -190,11 +191,12 @@ export function getStrategyStats(bets: Bet[]): StrategyStats[] {
       };
     }
     map[key].bets++;
-    if (bet.result === "win") {
+    const res = (bet.result ?? "").toUpperCase();
+    if (res === "WIN") {
       map[key].wins++;
       map[key].pnl += bet.pnl ?? 0;
       map[key].totalStaked += bet.stake;
-    } else if (bet.result === "loss") {
+    } else if (res === "LOSS") {
       map[key].losses++;
       map[key].pnl += bet.pnl ?? 0;
       map[key].totalStaked += bet.stake;
@@ -222,7 +224,8 @@ function getSportStats(
     if (!map[key]) {
       map[key] = { pnl: 0, totalStaked: 0, roi: 0 };
     }
-    if (bet.result === "win" || bet.result === "loss") {
+    const res = (bet.result ?? "").toUpperCase();
+    if (res === "WIN" || res === "LOSS") {
       map[key].pnl += bet.pnl ?? 0;
       map[key].totalStaked += bet.stake;
     }

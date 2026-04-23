@@ -160,6 +160,29 @@
       "result": "PENDING",
       "pnl": 0,
       "resolvedAt": null
+    },
+    {
+      "id": "20260423-MLB-008",
+      "date": "2026-04-23",
+      "sport": "MLB",
+      "gameId": "401815059",
+      "event": "NYY @ BOS",
+      "homeTeam": "Boston Red Sox",
+      "awayTeam": "New York Yankees",
+      "betType": "moneyline",
+      "pick": "New York Yankees",
+      "odds": -140,
+      "impliedProb": 0.5833,
+      "trueProb": 0.6389,
+      "edge": 0.0556,
+      "ev": 3.97,
+      "stake": 30,
+      "payout": 51.43,
+      "strategy": "value_hunting",
+      "notes": "VALUE HUNT: New York Yankees has +5.6% edge (model 63.9% vs implied 58.3% from -140). Yankees 15-9 overall with strong road record. Red Sox struggling at 9-15. Yankees favored on the road at Fenway with superior pitching and lineup depth.",
+      "result": "PENDING",
+      "pnl": null,
+      "resolvedAt": null
     }
   ]
 }

@@ -20,10 +20,11 @@ function getSportBadgeColor(sport: string): string {
 }
 
 function getResultDot(result: string | null): string {
-  switch (result) {
-    case "win":
+  const r = (result ?? "").toUpperCase();
+  switch (r) {
+    case "WIN":
       return "bg-emerald-400";
-    case "loss":
+    case "LOSS":
       return "bg-rose-400";
     default:
       return "bg-amber-400";
@@ -60,9 +61,9 @@ export default function AllBetsLog({ bets }: AllBetsLogProps) {
           const dayBets = grouped[date];
           const dayPnl = dayBets.reduce((sum, b) => sum + (b.pnl ?? 0), 0);
           const settled = dayBets.filter(
-            (b) => b.result === "win" || b.result === "loss"
+            (b) => (b.result ?? "").toUpperCase() === "WIN" || (b.result ?? "").toUpperCase() === "LOSS"
           );
-          const wins = settled.filter((b) => b.result === "win").length;
+          const wins = settled.filter((b) => (b.result ?? "").toUpperCase() === "WIN").length;
 
           return (
             <div key={date}>
