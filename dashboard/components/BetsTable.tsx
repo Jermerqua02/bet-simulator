@@ -66,58 +66,92 @@ function getSportBadgeColor(sport: string): string {
   }
 }
 
+/** Determine if a pending bet won or lost from the final score */
+function computeResultFromScore(
+  bet: Bet,
+  score: LiveScoreData
+): "WIN" | "LOSS" | null {
+  if (!score.isFinal) return null;
+  const homeWon = score.homeScore > score.awayScore;
+  // Match pick to home or away team
+  const pickIsHome =
+    bet.pick === bet.homeTeam ||
+    bet.homeTeam.includes(bet.pick) ||
+    bet.pick.includes(bet.homeTeam);
+  const pickIsAway =
+    bet.pick === bet.awayTeam ||
+    bet.awayTeam.includes(bet.pick) ||
+    bet.pick.includes(bet.awayTeam);
+  if (!pickIsHome && !pickIsAway) return null;
+  const won = pickIsHome ? homeWon : !homeWon;
+  return won ? "WIN" : "LOSS";
+}
+
 function getResultBadge(
-  result: string | null,
+  bet: Bet,
   liveScore: LiveScoreData | undefined
 ) {
-  const r = (result ?? "").toUpperCase();
-  // If the bet is pending and we have live score data, show contextual badges
-  if (r === "PENDING" || result === null) {
-    if (liveScore?.isLive) {
-      return (
-        <Badge className="border-0 bg-emerald-500/15 text-emerald-400 text-xs gap-1.5">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          </span>
-          LIVE
-        </Badge>
-      );
-    }
-    if (liveScore?.isFinal) {
-      return (
-        <Badge className="border-0 bg-zinc-500/15 text-zinc-300 text-xs">
-          FINAL
-        </Badge>
-      );
-    }
+  const r = (bet.result ?? "").toUpperCase();
+
+  // Already resolved — show WIN/LOSS
+  if (r === "WIN") {
     return (
-      <Badge className="border-0 bg-amber-500/15 text-amber-400 text-xs">
-        PENDING
+      <Badge className="border-0 bg-emerald-500/15 text-emerald-400 text-xs">
+        WIN
+      </Badge>
+    );
+  }
+  if (r === "LOSS") {
+    return (
+      <Badge className="border-0 bg-rose-500/15 text-rose-400 text-xs">
+        LOSS
       </Badge>
     );
   }
 
-  switch (r) {
-    case "WIN":
+  // Pending — use live score context
+  if (liveScore?.isLive) {
+    return (
+      <Badge className="border-0 bg-emerald-500/15 text-emerald-400 text-xs gap-1.5">
+        <span className="relative flex h-1.5 w-1.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        </span>
+        LIVE
+      </Badge>
+    );
+  }
+
+  // Game is final — compute WIN/LOSS immediately from score
+  if (liveScore?.isFinal) {
+    const computed = computeResultFromScore(bet, liveScore);
+    if (computed === "WIN") {
       return (
         <Badge className="border-0 bg-emerald-500/15 text-emerald-400 text-xs">
           WIN
         </Badge>
       );
-    case "LOSS":
+    }
+    if (computed === "LOSS") {
       return (
         <Badge className="border-0 bg-rose-500/15 text-rose-400 text-xs">
           LOSS
         </Badge>
       );
-    default:
-      return (
-        <Badge className="border-0 bg-amber-500/15 text-amber-400 text-xs">
-          PENDING
-        </Badge>
-      );
+    }
+    // Can't determine (e.g. parlay) — show FINAL
+    return (
+      <Badge className="border-0 bg-zinc-500/15 text-zinc-300 text-xs">
+        FINAL
+      </Badge>
+    );
   }
+
+  return (
+    <Badge className="border-0 bg-amber-500/15 text-amber-400 text-xs">
+      PENDING
+    </Badge>
+  );
 }
 
 function LiveScoreInline({ score }: { score: LiveScoreData }) {
@@ -345,20 +379,39 @@ export default function BetsTable({ bets, liveScores }: BetsTableProps) {
                     {(bet.edge * 100).toFixed(1)}%
                   </TableCell>
                   <TableCell className="text-center">
-                    {getResultBadge(bet.result, liveScore)}
+                    {getResultBadge(bet, liveScore)}
                   </TableCell>
                   <TableCell
-                    className={`text-right tabular-nums text-sm font-medium ${
-                      bet.pnl === null || bet.pnl === undefined
-                        ? "text-zinc-500"
-                        : bet.pnl >= 0
-                        ? "text-emerald-400"
-                        : "text-rose-400"
-                    }`}
+                    className={`text-right tabular-nums text-sm font-medium ${(() => {
+                      let pnl = bet.pnl;
+                      // Compute P&L inline for final games not yet resolved in data
+                      if ((pnl === null || pnl === undefined || pnl === 0) && liveScore?.isFinal) {
+                        const computed = computeResultFromScore(bet, liveScore);
+                        if (computed === "WIN") {
+                          pnl = bet.payout ? bet.payout - bet.stake : bet.odds > 0 ? bet.stake * (bet.odds / 100) : bet.stake * (100 / Math.abs(bet.odds));
+                        } else if (computed === "LOSS") {
+                          pnl = -bet.stake;
+                        }
+                      }
+                      if (pnl === null || pnl === undefined) return "text-zinc-500";
+                      return pnl >= 0 ? "text-emerald-400" : "text-rose-400";
+                    })()}`}
                   >
-                    {bet.pnl !== null && bet.pnl !== undefined
-                      ? formatCurrency(bet.pnl)
-                      : "--"}
+                    {(() => {
+                      let pnl = bet.pnl;
+                      if ((pnl === null || pnl === undefined || pnl === 0) && liveScore?.isFinal) {
+                        const computed = computeResultFromScore(bet, liveScore);
+                        if (computed === "WIN") {
+                          pnl = bet.payout ? bet.payout - bet.stake : bet.odds > 0 ? bet.stake * (bet.odds / 100) : bet.stake * (100 / Math.abs(bet.odds));
+                          pnl = Math.round(pnl * 100) / 100;
+                        } else if (computed === "LOSS") {
+                          pnl = -bet.stake;
+                        }
+                      }
+                      return pnl !== null && pnl !== undefined
+                        ? formatCurrency(pnl)
+                        : "--";
+                    })()}
                   </TableCell>
                 </TableRow>
               );
