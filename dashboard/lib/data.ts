@@ -10,17 +10,39 @@ import type {
 } from "./types";
 
 function getDataDir(): string {
-  // On Vercel, data is copied into ./data during build
-  const localDir = path.join(process.cwd(), "data");
-  if (fs.existsSync(localDir)) return localDir;
-  // Local dev: data lives in the parent directory
-  return path.join(process.cwd(), "..", "data");
+  // Build step copies ../data into ./data
+  // Check multiple possible locations for the data directory
+  const candidates = [
+    path.join(process.cwd(), "data"),
+    path.join(process.cwd(), "..", "data"),
+    path.join(__dirname, "..", "data"),
+    path.join(__dirname, "..", "..", "data"),
+  ];
+  for (const dir of candidates) {
+    try {
+      if (fs.existsSync(path.join(dir, "bets.json"))) return dir;
+    } catch {
+      continue;
+    }
+  }
+  // Default fallback
+  return path.join(process.cwd(), "data");
 }
 
 function readJsonFile<T>(filename: string): T {
   const filePath = path.join(getDataDir(), filename);
-  const raw = fs.readFileSync(filePath, "utf-8");
-  return JSON.parse(raw) as T;
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    return JSON.parse(raw) as T;
+  } catch {
+    // Return empty defaults if file not found
+    if (filename === "bets.json") return { bets: [] } as T;
+    if (filename === "bankroll.json")
+      return { startingBankroll: 10000, currentBankroll: 10000, history: [] } as T;
+    if (filename === "config.json")
+      return { sports: [], defaultStake: 25, maxStakePercent: 0.05, startingBankroll: 10000, strategies: {}, minEdge: 0.03, dailyBetTarget: 8 } as T;
+    return {} as T;
+  }
 }
 
 export function getBetsData(): BetsData {
