@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "cp -r ../data ./data && next build",
+    "prebuild": "node scripts/copy-data.js",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
