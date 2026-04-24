@@ -1,0 +1,80 @@
+name: Betting Agent
+
+on:
+  schedule:
+    # Place bets daily at 10:00 AM ET (14:00 UTC)
+    - cron: '0 14 * * *'
+    # Resolve bets every 30 minutes from 4 PM - 1 AM ET (20:00 - 05:00 UTC)
+    - cron: '*/30 20-23 * * *'
+    - cron: '*/30 0-5 * * *'
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Command to run (place, resolve, or both)'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - place
+          - resolve
+          - both
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r agent/requirements.txt
+
+      - name: Determine command
+        id: cmd
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "command=${{ inputs.command }}" >> $GITHUB_OUTPUT
+          else
+            # Cron: 14:00 UTC = place bets, all others = resolve
+            HOUR=$(date -u +%H)
+            if [ "$HOUR" = "14" ] && [ "$(date -u +%M)" -lt "5" ]; then
+              echo "command=both" >> $GITHUB_OUTPUT
+            else
+              echo "command=resolve" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Place bets
+        if: steps.cmd.outputs.command == 'place' || steps.cmd.outputs.command == 'both'
+        run: |
+          cd $GITHUB_WORKSPACE
+          python -m agent place
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Resolve bets
+        if: steps.cmd.outputs.command == 'resolve' || steps.cmd.outputs.command == 'both'
+        run: |
+          cd $GITHUB_WORKSPACE
+          python -m agent resolve
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "Betting Agent Bot"
+          git config user.email "bot@bet-simulator.local"
+          git add data/
+          if git diff --staged --quiet; then
+            echo "No data changes to commit"
+          else
+            TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M UTC")
+            git commit -m "Auto: update bet data ($TIMESTAMP)"
+            git push
+          fi
