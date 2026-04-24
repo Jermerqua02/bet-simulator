@@ -66,18 +66,35 @@ def update_bankroll(
     losses: int,
     pending: int,
 ) -> dict:
-    """Append a history entry and update the current bankroll.  Returns updated data."""
+    """Update the bankroll history for *date*, merging into an existing entry if one exists."""
     data = load_bankroll()
     data["currentBankroll"] = round(data["currentBankroll"] + pnl, 2)
-    data["history"].append({
-        "date": date,
-        "pnl": round(pnl, 2),
-        "betsPlaced": bets_placed,
-        "wins": wins,
-        "losses": losses,
-        "pending": pending,
-        "bankroll": data["currentBankroll"],
-    })
+
+    # Find existing entry for this date and merge, or create new
+    existing = None
+    for entry in data["history"]:
+        if entry.get("date") == date and "type" not in entry:
+            existing = entry
+            break
+
+    if existing:
+        existing["pnl"] = round(existing.get("pnl", 0) + pnl, 2)
+        existing["betsPlaced"] = bets_placed or existing.get("betsPlaced", 0)
+        existing["wins"] = existing.get("wins", 0) + wins
+        existing["losses"] = existing.get("losses", 0) + losses
+        existing["pending"] = pending
+        existing["bankroll"] = data["currentBankroll"]
+    else:
+        data["history"].append({
+            "date": date,
+            "pnl": round(pnl, 2),
+            "betsPlaced": bets_placed,
+            "wins": wins,
+            "losses": losses,
+            "pending": pending,
+            "bankroll": data["currentBankroll"],
+        })
+
     save_bankroll(data)
     return data
 

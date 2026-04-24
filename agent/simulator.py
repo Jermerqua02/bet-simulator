@@ -517,25 +517,16 @@ def resolve_bets() -> None:
     # Save updated bets
     save_bets(bets)
 
-    # Update bankroll
+    # Update bankroll (merges into existing date entry)
     if wins + losses > 0:
-        bankroll_data = load_bankroll()
-        bankroll_data["currentBankroll"] = round(
-            bankroll_data["currentBankroll"] + total_pnl, 2
+        update_bankroll(
+            date=_today_iso(),
+            pnl=total_pnl,
+            bets_placed=0,
+            wins=wins,
+            losses=losses,
+            pending=still_pending,
         )
-
-        # Append resolution history entry
-        bankroll_data["history"].append({
-            "date": _today_iso(),
-            "type": "resolution",
-            "pnl": round(total_pnl, 2),
-            "betsPlaced": 0,
-            "wins": wins,
-            "losses": losses,
-            "pending": still_pending,
-            "bankroll": bankroll_data["currentBankroll"],
-        })
-        save_bankroll(bankroll_data)
 
     pnl_color = _GREEN if total_pnl >= 0 else _RED
     print(f"\n  {_BOLD}Results:{_RESET}")
