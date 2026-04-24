@@ -72,19 +72,72 @@ function computeResultFromScore(
   score: LiveScoreData
 ): "WIN" | "LOSS" | null {
   if (!score.isFinal) return null;
-  const homeWon = score.homeScore > score.awayScore;
-  // Match pick to home or away team
-  const pickIsHome =
-    bet.pick === bet.homeTeam ||
-    bet.homeTeam.includes(bet.pick) ||
-    bet.pick.includes(bet.homeTeam);
-  const pickIsAway =
-    bet.pick === bet.awayTeam ||
-    bet.awayTeam.includes(bet.pick) ||
-    bet.pick.includes(bet.awayTeam);
-  if (!pickIsHome && !pickIsAway) return null;
-  const won = pickIsHome ? homeWon : !homeWon;
-  return won ? "WIN" : "LOSS";
+
+  const betType = (bet.betType ?? "").toLowerCase();
+
+  if (betType === "moneyline" || betType === "") {
+    const homeWon = score.homeScore > score.awayScore;
+    // Match pick to home or away team
+    const pickIsHome =
+      bet.pick === bet.homeTeam ||
+      bet.homeTeam.includes(bet.pick) ||
+      bet.pick.includes(bet.homeTeam);
+    const pickIsAway =
+      bet.pick === bet.awayTeam ||
+      bet.awayTeam.includes(bet.pick) ||
+      bet.pick.includes(bet.awayTeam);
+    if (!pickIsHome && !pickIsAway) return null;
+    const won = pickIsHome ? homeWon : !homeWon;
+    return won ? "WIN" : "LOSS";
+  }
+
+  if (betType === "spread") {
+    // Pick format: "Team Name -2.5" or "Team Name +2.5"
+    const lastSpace = bet.pick.lastIndexOf(" ");
+    if (lastSpace === -1) return null;
+    const teamName = bet.pick.slice(0, lastSpace);
+    const spreadLine = parseFloat(bet.pick.slice(lastSpace + 1));
+    if (isNaN(spreadLine)) return null;
+
+    const pickMatchesHome =
+      teamName === bet.homeTeam ||
+      bet.homeTeam.includes(teamName) ||
+      teamName.includes(bet.homeTeam);
+    const pickMatchesAway =
+      teamName === bet.awayTeam ||
+      bet.awayTeam.includes(teamName) ||
+      teamName.includes(bet.awayTeam);
+    if (!pickMatchesHome && !pickMatchesAway) return null;
+
+    const pickScore = pickMatchesHome ? score.homeScore : score.awayScore;
+    const oppScore = pickMatchesHome ? score.awayScore : score.homeScore;
+    const adjustedScore = pickScore + spreadLine;
+
+    // Push (exact tie) = no result
+    if (adjustedScore === oppScore) return null;
+    return adjustedScore > oppScore ? "WIN" : "LOSS";
+  }
+
+  if (betType === "over" || betType === "under") {
+    // Pick format: "Over 221.5" or "Under 7.5"
+    const parts = bet.pick.split(" ");
+    if (parts.length < 2) return null;
+    const line = parseFloat(parts[parts.length - 1]);
+    if (isNaN(line)) return null;
+
+    const total = score.homeScore + score.awayScore;
+
+    // Push (exact tie with line) = no result
+    if (total === line) return null;
+
+    if (betType === "over") {
+      return total > line ? "WIN" : "LOSS";
+    } else {
+      return total < line ? "WIN" : "LOSS";
+    }
+  }
+
+  return null;
 }
 
 function getResultBadge(

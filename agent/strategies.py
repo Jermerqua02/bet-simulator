@@ -20,6 +20,8 @@ from .odds import (
     calculate_edge,
     calculate_ev,
     calculate_payout,
+    spread_cover_probability,
+    total_probability,
 )
 from .bankroll import get_sport_roi
 
@@ -237,12 +239,12 @@ def kelly_criterion(games: list, standings: dict, config: dict, bankroll: float)
 # ---------------------------------------------------------------------------
 
 def safe_parlay(games: list, standings: dict, config: dict, bankroll: float) -> list:
-    """Build 2-3 leg parlays from the best high-probability picks."""
+    """Build 2-3 leg parlays from the best high-probability picks (moneyline, spread, totals)."""
     bets = []
     stake = config.get("defaultStake", 25)
     prob_threshold = 0.60
 
-    # Collect all qualifying legs
+    # Collect all qualifying legs (moneyline, spread, and totals)
     legs = []
     for game in games:
         info = _compute_probs(game, standings)
@@ -251,6 +253,10 @@ def safe_parlay(games: list, standings: dict, config: dict, bankroll: float) -> 
         (home_name, away_name, home_ml, away_ml,
          home_implied, away_implied, home_true, away_true) = info
 
+        odds_data = game.get("odds", {})
+        sport = game["sport"]
+
+        # --- Moneyline legs ---
         for side, name, ml, imp, tp in [
             ("home", home_name, home_ml, home_implied, home_true),
             ("away", away_name, away_ml, away_implied, away_true),
@@ -260,10 +266,95 @@ def safe_parlay(games: list, standings: dict, config: dict, bankroll: float) -> 
                     "game": game,
                     "side": side,
                     "name": name,
+                    "pick": name,
+                    "betType": "moneyline",
                     "ml": ml,
                     "implied": imp,
                     "true": tp,
                     "edge": calculate_edge(tp, imp),
+                })
+
+        # --- Spread legs ---
+        spread_line = odds_data.get("spread")
+        spread_home_odds = odds_data.get("spreadOdds")
+        spread_away_odds = odds_data.get("spreadAwayOdds")
+
+        if spread_line is not None:
+            if spread_home_odds is not None:
+                home_cover = spread_cover_probability(home_true, spread_line, sport)
+                home_spread_implied = american_to_implied(spread_home_odds)
+                if home_cover >= prob_threshold:
+                    legs.append({
+                        "game": game,
+                        "side": "home",
+                        "name": f"{home_name} {spread_line:+g}",
+                        "pick": f"{home_name} {spread_line:+g}",
+                        "betType": "spread",
+                        "ml": spread_home_odds,
+                        "implied": home_spread_implied,
+                        "true": home_cover,
+                        "edge": calculate_edge(home_cover, home_spread_implied),
+                    })
+
+            if spread_away_odds is not None:
+                away_spread_line = -spread_line
+                away_cover = spread_cover_probability(away_true, away_spread_line, sport)
+                away_spread_implied = american_to_implied(spread_away_odds)
+                if away_cover >= prob_threshold:
+                    legs.append({
+                        "game": game,
+                        "side": "away",
+                        "name": f"{away_name} {away_spread_line:+g}",
+                        "pick": f"{away_name} {away_spread_line:+g}",
+                        "betType": "spread",
+                        "ml": spread_away_odds,
+                        "implied": away_spread_implied,
+                        "true": away_cover,
+                        "edge": calculate_edge(away_cover, away_spread_implied),
+                    })
+
+        # --- Totals legs ---
+        ou_line = odds_data.get("overUnder")
+        over_odds = odds_data.get("overOdds")
+        under_odds = odds_data.get("underOdds")
+
+        if ou_line is not None:
+            home_stats = standings.get(home_name, {})
+            away_stats = standings.get(away_name, {})
+            home_games = home_stats.get("wins", 0) + home_stats.get("losses", 0)
+            away_games = away_stats.get("wins", 0) + away_stats.get("losses", 0)
+            home_diff_pg = float(home_stats.get("pointDiff", 0)) / home_games if home_games > 0 else 0
+            away_diff_pg = float(away_stats.get("pointDiff", 0)) / away_games if away_games > 0 else 0
+
+            over_prob = total_probability(home_diff_pg, away_diff_pg, ou_line, sport)
+            under_prob = 1.0 - over_prob
+
+            if over_odds is not None and over_prob >= prob_threshold:
+                over_implied = american_to_implied(over_odds)
+                legs.append({
+                    "game": game,
+                    "side": "over",
+                    "name": f"Over {ou_line}",
+                    "pick": f"Over {ou_line}",
+                    "betType": "over",
+                    "ml": over_odds,
+                    "implied": over_implied,
+                    "true": over_prob,
+                    "edge": calculate_edge(over_prob, over_implied),
+                })
+
+            if under_odds is not None and under_prob >= prob_threshold:
+                under_implied = american_to_implied(under_odds)
+                legs.append({
+                    "game": game,
+                    "side": "under",
+                    "name": f"Under {ou_line}",
+                    "pick": f"Under {ou_line}",
+                    "betType": "under",
+                    "ml": under_odds,
+                    "implied": under_implied,
+                    "true": under_prob,
+                    "edge": calculate_edge(under_prob, under_implied),
                 })
 
     # Sort by true probability descending
@@ -291,8 +382,9 @@ def safe_parlay(games: list, standings: dict, config: dict, bankroll: float) -> 
             combined_true *= leg["true"]
             combined_implied *= leg["implied"]
             used_game_ids.add(leg["game"]["gameId"])
+            bet_label = leg.get("betType", "moneyline")
             leg_descriptions.append(
-                f"{leg['name']} ({leg['ml']:+d}, model {leg['true']:.1%})"
+                f"{leg['pick']} [{bet_label}] ({leg['ml']:+d}, model {leg['true']:.1%})"
             )
 
         parlay_american = decimal_to_american(combined_decimal)
@@ -314,7 +406,7 @@ def safe_parlay(games: list, standings: dict, config: dict, bankroll: float) -> 
 
         # Use the first leg's game for the bet record (parlay is cross-game)
         primary_game = parlay_legs[0]["game"]
-        pick_names = " + ".join(l["name"] for l in parlay_legs)
+        pick_names = " + ".join(l["pick"] for l in parlay_legs)
 
         bets.append(_build_bet(
             primary_game, f"parlay-{parlay_size}leg", pick_names,
@@ -439,6 +531,162 @@ def sport_specialist(games: list, standings: dict, config: dict, bankroll: float
 
 
 # ---------------------------------------------------------------------------
+# 7. Spread Value  -- find spread bets where model cover prob > implied
+# ---------------------------------------------------------------------------
+
+def spread_value(games: list, standings: dict, config: dict, bankroll: float) -> list:
+    """Find spread bets where our model's cover probability exceeds the implied odds."""
+    bets = []
+    stake = config.get("defaultStake", 25)
+    min_edge = config.get("minEdge", 0.03)
+
+    for game in games:
+        info = _compute_probs(game, standings)
+        if info is None:
+            continue
+        (home_name, away_name, home_ml, away_ml,
+         home_implied, away_implied, home_true, away_true) = info
+
+        odds_data = game.get("odds", {})
+        spread_line = odds_data.get("spread")      # home team spread (e.g., -2.5)
+        spread_home_odds = odds_data.get("spreadOdds")
+        spread_away_odds = odds_data.get("spreadAwayOdds")
+
+        if spread_line is None:
+            continue
+
+        sport = game["sport"]
+
+        # --- Home team spread ---
+        if spread_home_odds is not None:
+            home_cover = spread_cover_probability(home_true, spread_line, sport)
+            home_spread_implied = american_to_implied(spread_home_odds)
+            home_edge = calculate_edge(home_cover, home_spread_implied)
+
+            if home_edge >= min_edge:
+                pick = f"{home_name} {spread_line:+g}"
+                team_stats = standings.get(home_name, {})
+                notes = (
+                    f"SPREAD VALUE: {pick} -- model cover prob {home_cover:.1%} "
+                    f"vs implied {home_spread_implied:.1%} from {spread_home_odds:+d} odds. "
+                    f"Edge: {home_edge:+.1%}. "
+                    f"Win prob: {home_true:.1%}, spread line: {spread_line:+g}. "
+                    f"Record: {game['home'].get('record', 'N/A')}, "
+                    f"Diff: {team_stats.get('pointDiff', 'N/A')}."
+                )
+                bets.append(_build_bet(
+                    game, "spread", pick, spread_home_odds,
+                    home_spread_implied, home_cover, stake,
+                    "spread_value", notes,
+                ))
+
+        # --- Away team spread (opposite of home spread) ---
+        if spread_away_odds is not None:
+            away_spread_line = -spread_line  # away spread is inverse of home
+            away_cover = spread_cover_probability(away_true, away_spread_line, sport)
+            away_spread_implied = american_to_implied(spread_away_odds)
+            away_edge = calculate_edge(away_cover, away_spread_implied)
+
+            if away_edge >= min_edge:
+                pick = f"{away_name} {away_spread_line:+g}"
+                team_stats = standings.get(away_name, {})
+                notes = (
+                    f"SPREAD VALUE: {pick} -- model cover prob {away_cover:.1%} "
+                    f"vs implied {away_spread_implied:.1%} from {spread_away_odds:+d} odds. "
+                    f"Edge: {away_edge:+.1%}. "
+                    f"Win prob: {away_true:.1%}, spread line: {away_spread_line:+g}. "
+                    f"Record: {game['away'].get('record', 'N/A')}, "
+                    f"Diff: {team_stats.get('pointDiff', 'N/A')}."
+                )
+                bets.append(_build_bet(
+                    game, "spread", pick, spread_away_odds,
+                    away_spread_implied, away_cover, stake,
+                    "spread_value", notes,
+                ))
+
+    return bets
+
+
+# ---------------------------------------------------------------------------
+# 8. Totals Hunter  -- find over/under bets with edge
+# ---------------------------------------------------------------------------
+
+def totals_hunter(games: list, standings: dict, config: dict, bankroll: float) -> list:
+    """Find over/under bets where our model's total probability exceeds implied odds."""
+    bets = []
+    stake = config.get("defaultStake", 25)
+    min_edge = config.get("minEdge", 0.03)
+
+    for game in games:
+        odds_data = game.get("odds", {})
+        ou_line = odds_data.get("overUnder")
+        over_odds = odds_data.get("overOdds")
+        under_odds = odds_data.get("underOdds")
+
+        if ou_line is None:
+            continue
+
+        sport = game["sport"]
+        home_name = game["home"].get("name", "")
+        away_name = game["away"].get("name", "")
+
+        home_stats = standings.get(home_name, {})
+        away_stats = standings.get(away_name, {})
+
+        # Calculate per-game differentials
+        home_games = home_stats.get("wins", 0) + home_stats.get("losses", 0)
+        away_games = away_stats.get("wins", 0) + away_stats.get("losses", 0)
+
+        home_diff_pg = float(home_stats.get("pointDiff", 0)) / home_games if home_games > 0 else 0
+        away_diff_pg = float(away_stats.get("pointDiff", 0)) / away_games if away_games > 0 else 0
+
+        over_prob = total_probability(home_diff_pg, away_diff_pg, ou_line, sport)
+        under_prob = 1.0 - over_prob
+
+        # --- Check OVER ---
+        if over_odds is not None:
+            over_implied = american_to_implied(over_odds)
+            over_edge = calculate_edge(over_prob, over_implied)
+
+            if over_edge >= min_edge:
+                pick = f"Over {ou_line}"
+                notes = (
+                    f"TOTALS HUNTER: {pick} in {game['event']} -- "
+                    f"model over prob {over_prob:.1%} vs implied {over_implied:.1%} "
+                    f"from {over_odds:+d} odds. Edge: {over_edge:+.1%}. "
+                    f"Line: {ou_line}, home diff/g: {home_diff_pg:+.1f}, "
+                    f"away diff/g: {away_diff_pg:+.1f}."
+                )
+                bets.append(_build_bet(
+                    game, "over", pick, over_odds,
+                    over_implied, over_prob, stake,
+                    "totals", notes,
+                ))
+
+        # --- Check UNDER ---
+        if under_odds is not None:
+            under_implied = american_to_implied(under_odds)
+            under_edge = calculate_edge(under_prob, under_implied)
+
+            if under_edge >= min_edge:
+                pick = f"Under {ou_line}"
+                notes = (
+                    f"TOTALS HUNTER: {pick} in {game['event']} -- "
+                    f"model under prob {under_prob:.1%} vs implied {under_implied:.1%} "
+                    f"from {under_odds:+d} odds. Edge: {under_edge:+.1%}. "
+                    f"Line: {ou_line}, home diff/g: {home_diff_pg:+.1f}, "
+                    f"away diff/g: {away_diff_pg:+.1f}."
+                )
+                bets.append(_build_bet(
+                    game, "under", pick, under_odds,
+                    under_implied, under_prob, stake,
+                    "totals", notes,
+                ))
+
+    return bets
+
+
+# ---------------------------------------------------------------------------
 # Strategy registry
 # ---------------------------------------------------------------------------
 
@@ -449,4 +697,6 @@ STRATEGIES = {
     "parlay": safe_parlay,
     "contrarian": contrarian,
     "specialist": sport_specialist,
+    "spread_value": spread_value,
+    "totals": totals_hunter,
 }

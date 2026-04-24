@@ -214,6 +214,87 @@ def calculate_ev(odds: int, true_prob: float, stake: float) -> float:
     return (true_prob * net_profit) - ((1 - true_prob) * stake)
 
 
+# ---------------------------------------------------------------------------
+# Spread & totals probability helpers
+# ---------------------------------------------------------------------------
+
+# Sport-specific spread factors (points of spread per % probability adjustment)
+SPREAD_FACTOR = {
+    "NBA": 0.028,   # ~2.8% per point of spread
+    "MLB": 0.10,    # ~10% per run on run line
+    "NHL": 0.10,    # ~10% per goal on puck line
+}
+
+
+def spread_cover_probability(win_prob: float, spread_line: float, sport: str = "NBA") -> float:
+    """
+    Estimate probability of covering a spread given moneyline win probability.
+
+    If win_prob = 0.65 and spread = -3.5 (favorite by 3.5), the team needs to
+    win by 4+, which is harder than just winning.
+
+    spread_line is from the bettor's perspective:
+      -3.5 means the team is favored (must win by 4+)
+      +3.5 means the team is underdog (can lose by 3 and still cover)
+    """
+    factor = SPREAD_FACTOR.get(sport.upper(), 0.03)
+    # Negative spread = harder to cover, positive = easier
+    # adjustment = spread * factor (negative spread reduces probability)
+    adjustment = spread_line * factor
+    cover_prob = win_prob + adjustment
+    return max(0.05, min(0.95, cover_prob))
+
+
+def total_probability(
+    team_diff_pg: float,
+    opp_diff_pg: float,
+    line: float,
+    sport: str = "NBA",
+) -> float:
+    """
+    Estimate probability that the total score goes OVER the line.
+
+    Uses per-game point differentials as a proxy for scoring pace.
+    Higher combined differentials suggest higher-scoring games.
+    """
+    # League average total scores
+    LEAGUE_AVG_TOTAL = {
+        "NBA": 224.0,
+        "MLB": 8.5,
+        "NHL": 5.8,
+    }
+    avg_total = LEAGUE_AVG_TOTAL.get(sport.upper(), 200)
+
+    # Offensive proxy: teams with positive differential tend to score more
+    # Combine both teams' differentials to estimate total scoring
+    combined_diff = team_diff_pg + opp_diff_pg
+
+    # Scale factor: how much differential affects total
+    TOTAL_SCALE = {
+        "NBA": 0.8,   # differential translates strongly to total
+        "MLB": 0.3,
+        "NHL": 0.4,
+    }
+    scale = TOTAL_SCALE.get(sport.upper(), 0.5)
+
+    projected_total = avg_total + (combined_diff * scale)
+
+    # Convert projected total vs line to probability
+    # Using a sigmoid-like function based on distance from line
+    diff_from_line = projected_total - line
+
+    # Sensitivity: how much each point of difference changes probability
+    SENSITIVITY = {
+        "NBA": 0.04,   # each point = ~4% probability shift
+        "MLB": 0.08,
+        "NHL": 0.07,
+    }
+    sens = SENSITIVITY.get(sport.upper(), 0.05)
+
+    over_prob = 0.5 + (diff_from_line * sens)
+    return max(0.05, min(0.95, over_prob))
+
+
 def calculate_payout(odds: int, stake: float) -> float:
     """
     Total payout (stake + profit) if the bet wins.

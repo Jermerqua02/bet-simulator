@@ -117,7 +117,7 @@ export default function DashboardClient({
     (b) => (b.result ?? "").toUpperCase() === "PENDING" || b.result === null
   );
 
-  /** Auto-resolve pending moneyline bets when ESPN shows game as FINAL */
+  /** Auto-resolve pending bets when ESPN shows game as FINAL */
   useEffect(() => {
     if (liveScores.size === 0) return;
 
@@ -126,30 +126,81 @@ export default function DashboardClient({
     for (const bet of bets) {
       const r = (bet.result ?? "").toUpperCase();
       if (r === "WIN" || r === "LOSS") continue;
-      // Only auto-resolve simple moneyline bets (parlays need all legs)
-      if (bet.betType !== "moneyline") continue;
+
+      const betType = (bet.betType ?? "").toLowerCase();
+      // Only auto-resolve known bet types (parlays need all legs)
+      if (!["moneyline", "spread", "over", "under"].includes(betType)) continue;
 
       const score = liveScores.get(bet.gameId);
       if (!score?.isFinal) continue;
 
-      // Determine winner from final score
-      const homeWon = score.homeScore > score.awayScore;
-      const pickIsHome = bet.pick === bet.homeTeam;
-      const pickIsAway = bet.pick === bet.awayTeam;
+      let won: boolean | null = null;
 
-      // Fuzzy fallback if exact match fails
-      const pickMatchesHome =
-        pickIsHome ||
-        bet.homeTeam.includes(bet.pick) ||
-        bet.pick.includes(bet.homeTeam);
-      const pickMatchesAway =
-        pickIsAway ||
-        bet.awayTeam.includes(bet.pick) ||
-        bet.pick.includes(bet.awayTeam);
+      if (betType === "moneyline") {
+        // Determine winner from final score
+        const homeWon = score.homeScore > score.awayScore;
+        const pickIsHome = bet.pick === bet.homeTeam;
+        const pickIsAway = bet.pick === bet.awayTeam;
 
-      if (!pickMatchesHome && !pickMatchesAway) continue;
+        // Fuzzy fallback if exact match fails
+        const pickMatchesHome =
+          pickIsHome ||
+          bet.homeTeam.includes(bet.pick) ||
+          bet.pick.includes(bet.homeTeam);
+        const pickMatchesAway =
+          pickIsAway ||
+          bet.awayTeam.includes(bet.pick) ||
+          bet.pick.includes(bet.awayTeam);
 
-      const won = pickMatchesHome ? homeWon : !homeWon;
+        if (!pickMatchesHome && !pickMatchesAway) continue;
+        won = pickMatchesHome ? homeWon : !homeWon;
+      } else if (betType === "spread") {
+        // Pick format: "Team Name -2.5" or "Team Name +2.5"
+        // Split on the last space to separate team name from spread line
+        const lastSpace = bet.pick.lastIndexOf(" ");
+        if (lastSpace === -1) continue;
+        const teamName = bet.pick.slice(0, lastSpace);
+        const spreadLine = parseFloat(bet.pick.slice(lastSpace + 1));
+        if (isNaN(spreadLine)) continue;
+
+        // Determine if picked team is home or away
+        const pickMatchesHome =
+          teamName === bet.homeTeam ||
+          bet.homeTeam.includes(teamName) ||
+          teamName.includes(bet.homeTeam);
+        const pickMatchesAway =
+          teamName === bet.awayTeam ||
+          bet.awayTeam.includes(teamName) ||
+          teamName.includes(bet.awayTeam);
+        if (!pickMatchesHome && !pickMatchesAway) continue;
+
+        const pickScore = pickMatchesHome ? score.homeScore : score.awayScore;
+        const oppScore = pickMatchesHome ? score.awayScore : score.homeScore;
+        const adjustedScore = pickScore + spreadLine;
+
+        // Push (exact tie) = no action
+        if (adjustedScore === oppScore) continue;
+        won = adjustedScore > oppScore;
+      } else if (betType === "over" || betType === "under") {
+        // Pick format: "Over 221.5" or "Under 7.5"
+        const parts = bet.pick.split(" ");
+        if (parts.length < 2) continue;
+        const line = parseFloat(parts[parts.length - 1]);
+        if (isNaN(line)) continue;
+
+        const total = score.homeScore + score.awayScore;
+
+        // Push (exact tie with line) = no action
+        if (total === line) continue;
+
+        if (betType === "over") {
+          won = total > line;
+        } else {
+          won = total < line;
+        }
+      }
+
+      if (won === null) continue;
 
       let pnl: number;
       if (won) {

@@ -4,12 +4,14 @@
   "maxStakePercent": 0.05,
   "startingBankroll": 10000,
   "strategies": {
-    "high_probability": { "enabled": true, "weight": 0.2 },
-    "value": { "enabled": true, "weight": 0.25 },
-    "kelly": { "enabled": true, "weight": 0.2 },
-    "parlay": { "enabled": true, "weight": 0.1 },
-    "contrarian": { "enabled": true, "weight": 0.15 },
-    "specialist": { "enabled": true, "weight": 0.1 }
+    "high_probability": { "enabled": true, "weight": 0.15 },
+    "value": { "enabled": true, "weight": 0.20 },
+    "kelly": { "enabled": true, "weight": 0.15 },
+    "parlay": { "enabled": true, "weight": 0.05 },
+    "contrarian": { "enabled": true, "weight": 0.10 },
+    "specialist": { "enabled": true, "weight": 0.05 },
+    "spread_value": { "enabled": true, "weight": 0.15 },
+    "totals": { "enabled": true, "weight": 0.15 }
   },
   "minEdge": 0.03,
   "dailyBetTarget": 8

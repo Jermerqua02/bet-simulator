@@ -311,6 +311,78 @@ def resolve_bets() -> None:
             else:
                 bet["result"] = "LOSS"
                 pnl = -bet.get("stake", 0)
+
+        elif "spread" in bet_type:
+            # Parse spread line from pick (e.g., "Cleveland Cavaliers -2.5")
+            home_score = int(matched_game["home"].get("score", 0) or 0)
+            away_score = int(matched_game["away"].get("score", 0) or 0)
+
+            # Extract spread line from pick string
+            pick_parts = bet.get("pick", "").rsplit(" ", 1)
+            try:
+                spread_line = float(pick_parts[-1])
+            except (ValueError, IndexError):
+                still_pending += 1
+                continue
+
+            team_name = pick_parts[0].strip()
+            # Determine if pick team is home or away
+            if team_name == matched_game["home"]["name"]:
+                team_score = home_score
+                opp_score = away_score
+            else:
+                team_score = away_score
+                opp_score = home_score
+
+            # Check if spread is covered
+            # spread_line is negative for favorites (need to win by more)
+            # spread_line is positive for underdogs (can lose by less)
+            adjusted_score = team_score + spread_line
+            if adjusted_score > opp_score:
+                bet["result"] = "WIN"
+                pnl = bet.get("payout", 0) - bet.get("stake", 0)
+            elif adjusted_score < opp_score:
+                bet["result"] = "LOSS"
+                pnl = -bet.get("stake", 0)
+            else:
+                # Push (exact spread)
+                bet["result"] = "PUSH"
+                pnl = 0
+
+        elif bet_type in ("over", "under"):
+            home_score = int(matched_game["home"].get("score", 0) or 0)
+            away_score = int(matched_game["away"].get("score", 0) or 0)
+            total_score = home_score + away_score
+
+            # Extract line from pick (e.g., "Over 221.5" or "Under 7.5")
+            pick_parts = bet.get("pick", "").split(" ", 1)
+            try:
+                line = float(pick_parts[-1])
+            except (ValueError, IndexError):
+                still_pending += 1
+                continue
+
+            if bet_type == "over":
+                if total_score > line:
+                    bet["result"] = "WIN"
+                    pnl = bet.get("payout", 0) - bet.get("stake", 0)
+                elif total_score < line:
+                    bet["result"] = "LOSS"
+                    pnl = -bet.get("stake", 0)
+                else:
+                    bet["result"] = "PUSH"
+                    pnl = 0
+            else:  # under
+                if total_score < line:
+                    bet["result"] = "WIN"
+                    pnl = bet.get("payout", 0) - bet.get("stake", 0)
+                elif total_score > line:
+                    bet["result"] = "LOSS"
+                    pnl = -bet.get("stake", 0)
+                else:
+                    bet["result"] = "PUSH"
+                    pnl = 0
+
         else:
             # Standard moneyline
             if pick == winner:
@@ -327,15 +399,21 @@ def resolve_bets() -> None:
 
         if bet["result"] == "WIN":
             wins += 1
-        else:
+        elif bet["result"] == "LOSS":
             losses += 1
+        # PUSH: no win/loss count, pnl is 0
 
     # Print results
     if resolved_today:
         print(f"\n  {'ID':<22} {'Event':<30} {'Pick':<22} {'Result':>7} {'P&L':>10}")
         print(f"  {'-' * 95}")
         for b in resolved_today:
-            r_color = _GREEN if b["result"] == "WIN" else _RED
+            if b["result"] == "WIN":
+                r_color = _GREEN
+            elif b["result"] == "PUSH":
+                r_color = _YELLOW
+            else:
+                r_color = _RED
             pnl_str = f"{'+'if b['pnl']>=0 else ''}${b['pnl']:,.2f}"
             print(
                 f"  {b['id']:<22} {b['event']:<30} {b['pick']:<22} "

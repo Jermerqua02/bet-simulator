@@ -149,6 +149,7 @@ def _parse_odds(event: dict) -> dict:
         "awayMoneyline": None,
         "spread": None,
         "spreadOdds": None,
+        "spreadAwayOdds": None,
         "overUnder": None,
         "overOdds": None,
         "underOdds": None,
@@ -187,6 +188,7 @@ def _parse_odds(event: dict) -> dict:
     # Spread info from pointSpread object
     spread_val = _try_float(dk_odds.get("spread"))
     spread_home_odds = _try_int(_safe_get(dk_odds, "pointSpread", "home", "close", "odds"))
+    spread_away_odds = _try_int(_safe_get(dk_odds, "pointSpread", "away", "close", "odds"))
 
     # Over/under from total object
     over_under = _try_float(dk_odds.get("overUnder"))
@@ -198,6 +200,7 @@ def _parse_odds(event: dict) -> dict:
         "awayMoneyline": _try_int(away_ml),
         "spread": spread_val,
         "spreadOdds": spread_home_odds,
+        "spreadAwayOdds": spread_away_odds,
         "overUnder": over_under,
         "overOdds": over_odds,
         "underOdds": under_odds,
