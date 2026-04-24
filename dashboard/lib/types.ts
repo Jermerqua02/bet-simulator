@@ -114,4 +114,5 @@ export interface LiveScoreData {
   isLive: boolean;
   isFinal: boolean;
   isPreGame: boolean;
+  startTime?: string; // ISO 8601 start time from ESPN
 }

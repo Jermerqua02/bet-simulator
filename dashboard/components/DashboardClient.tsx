@@ -48,6 +48,8 @@ function parseEspnEvent(
   const stateStr = status?.type?.state ?? "pre"; // "pre", "in", "post"
   const statusDetail = status?.type?.shortDetail ?? status?.type?.detail ?? "";
 
+  const startTime = competition.date ?? event.date;
+
   return {
     gameId: event.id,
     homeTeam: homeComp.team?.displayName ?? homeComp.team?.shortDisplayName ?? "Home",
@@ -58,6 +60,7 @@ function parseEspnEvent(
     isLive: stateStr === "in",
     isFinal: stateStr === "post",
     isPreGame: stateStr === "pre",
+    startTime,
   };
 }
 
@@ -73,7 +76,9 @@ interface EspnCompetitor {
 
 interface EspnEvent {
   id: string;
+  date?: string;
   competitions?: Array<{
+    date?: string;
     competitors?: EspnCompetitor[];
   }>;
   status?: {

@@ -39,6 +39,21 @@ function formatOdds(odds: number): string {
   return odds >= 0 ? `+${odds}` : `${odds}`;
 }
 
+/** Format a countdown string from an ISO start time */
+function formatCountdown(startTime: string | undefined): string | null {
+  if (!startTime) return null;
+  const diff = new Date(startTime).getTime() - Date.now();
+  if (diff <= 0) return null;
+
+  const totalMin = Math.floor(diff / 60_000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return "<1m";
+}
+
 /** Get a status badge for the bet + game state */
 function StatusBadge({
   bet,
@@ -92,9 +107,26 @@ function StatusBadge({
   }
 
   if (score?.isPreGame) {
+    const countdown = formatCountdown(score.startTime);
     return (
-      <Badge className="border-0 bg-zinc-500/15 text-zinc-400 text-[10px]">
-        PRE-GAME
+      <Badge className="border-0 bg-zinc-500/15 text-zinc-400 text-[10px] gap-1">
+        {countdown ? (
+          <>
+            <svg
+              className="h-2.5 w-2.5 text-zinc-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2.5}
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
+            </svg>
+            {countdown}
+          </>
+        ) : (
+          "PRE-GAME"
+        )}
       </Badge>
     );
   }
@@ -374,10 +406,18 @@ function BetCard({
         )}
       </div>
 
-      {/* Event name */}
+      {/* Event name + start time */}
       <div className="text-sm text-zinc-300 font-medium mt-1">
         {bet.event}
       </div>
+      {score?.isPreGame && score.startTime && (
+        <div className="text-[10px] text-zinc-500 mt-0.5">
+          {new Date(score.startTime).toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+          })}
+        </div>
+      )}
 
       {/* Bet-specific context with live stats */}
       <BetContext bet={bet} score={score} />
