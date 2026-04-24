@@ -436,8 +436,10 @@ export default function BetsTable({ bets, liveScores }: BetsTableProps) {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm font-medium text-zinc-200 whitespace-nowrap">
-                    {bet.pick}
+                  <TableCell className="text-sm font-medium text-zinc-200 max-w-[180px]">
+                    <span className="block truncate" title={bet.pick}>
+                      {bet.pick}
+                    </span>
                   </TableCell>
                   <TableCell className="text-right font-mono text-sm text-zinc-300">
                     {formatOdds(bet.odds)}
