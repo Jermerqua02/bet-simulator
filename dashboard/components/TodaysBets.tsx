@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import BetModal from "./BetModal";
 import type { Bet, LiveScoreData } from "@/lib/types";
 
 interface TodaysBetsProps {
@@ -363,9 +365,11 @@ function BetContext({
 function BetCard({
   bet,
   score,
+  onClick,
 }: {
   bet: Bet;
   score: LiveScoreData | undefined;
+  onClick: () => void;
 }) {
   const sportColor = getSportColor(bet.sport);
   const sportLabel = getSportLabel(bet.sport);
@@ -386,9 +390,10 @@ function BetCard({
 
   return (
     <div
-      className={`rounded-lg border ${sportColor} bg-zinc-900/80 p-4 ${
+      className={`rounded-lg border ${sportColor} bg-zinc-900/80 p-4 cursor-pointer transition-colors hover:bg-zinc-800/80 ${
         score?.isLive ? "ring-1 ring-emerald-500/20" : ""
       }`}
+      onClick={onClick}
     >
       {/* Header: sport + status + P&L */}
       <div className="flex items-center justify-between mb-1">
@@ -446,6 +451,9 @@ export default function TodaysBets({
   liveScores,
   lastUpdated,
 }: TodaysBetsProps) {
+  const [selectedBet, setSelectedBet] = useState<Bet | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
   if (bets.length === 0) {
     return null;
   }
@@ -500,9 +508,19 @@ export default function TodaysBets({
             key={bet.id}
             bet={bet}
             score={liveScores.get(bet.gameId)}
+            onClick={() => {
+              setSelectedBet(bet);
+              setModalOpen(true);
+            }}
           />
         ))}
       </div>
+
+      <BetModal
+        bet={selectedBet}
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+      />
     </div>
   );
 }
