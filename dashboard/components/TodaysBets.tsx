@@ -108,25 +108,26 @@ function StatusBadge({
 
   if (score?.isPreGame) {
     const countdown = formatCountdown(score.startTime);
+    if (countdown) {
+      return (
+        <Badge className="border-0 bg-sky-500/20 text-sky-300 text-[11px] font-semibold gap-1.5 px-2 py-0.5">
+          <svg
+            className="h-3 w-3 text-sky-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 6v6l4 2" />
+          </svg>
+          {countdown}
+        </Badge>
+      );
+    }
     return (
-      <Badge className="border-0 bg-zinc-500/15 text-zinc-400 text-[10px] gap-1">
-        {countdown ? (
-          <>
-            <svg
-              className="h-2.5 w-2.5 text-zinc-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2.5}
-            >
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 6v6l4 2" />
-            </svg>
-            {countdown}
-          </>
-        ) : (
-          "PRE-GAME"
-        )}
+      <Badge className="border-0 bg-zinc-500/15 text-zinc-400 text-[10px]">
+        PRE-GAME
       </Badge>
     );
   }
@@ -411,7 +412,8 @@ function BetCard({
         {bet.event}
       </div>
       {score?.isPreGame && score.startTime && (
-        <div className="text-[10px] text-zinc-500 mt-0.5">
+        <div className="text-xs text-sky-400/70 font-medium mt-0.5">
+          Starts{" "}
           {new Date(score.startTime).toLocaleTimeString([], {
             hour: "numeric",
             minute: "2-digit",
