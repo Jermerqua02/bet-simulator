@@ -15,5 +15,5 @@
     "player_props": { "enabled": true, "weight": 0.15 }
   },
   "minEdge": 0.03,
-  "dailyBetTarget": 8
+  "dailyBetTarget": 10
 }

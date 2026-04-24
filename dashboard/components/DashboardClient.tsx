@@ -6,7 +6,7 @@ import StatsRow from "@/components/StatsRow";
 import BankrollChart from "@/components/BankrollChart";
 import StrategyTable from "@/components/StrategyTable";
 import BetsTable from "@/components/BetsTable";
-import LiveScores from "@/components/LiveScores";
+import TodaysBets from "@/components/TodaysBets";
 import { calculateStats, getStrategyStats } from "@/lib/data";
 import type {
   Bet,
@@ -116,6 +116,10 @@ export default function DashboardClient({
   const pendingBets = bets.filter(
     (b) => (b.result ?? "").toUpperCase() === "PENDING" || b.result === null
   );
+
+  // Today's bets (all bets from today's date)
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todaysBets = bets.filter((b) => b.date === todayStr);
 
   /** Auto-resolve pending bets when ESPN shows game as FINAL */
   useEffect(() => {
@@ -249,17 +253,17 @@ export default function DashboardClient({
   const stats: DashboardStats = calculateStats(bets, bankroll);
   const strategyStats: StrategyStatsType[] = getStrategyStats(bets);
 
-  /** Fetch live scores from ESPN for all pending bets */
+  /** Fetch live scores from ESPN for all of today's bets */
   const fetchLiveScores = useCallback(async () => {
-    if (pendingBets.length === 0) return;
+    if (todaysBets.length === 0) return;
 
-    // Group pending bets by sport + date to minimize API calls
+    // Group today's bets by sport + date to minimize API calls
     const fetchGroups = new Map<
       string,
       { sport: string; league: string; date: string; gameIds: Set<string> }
     >();
 
-    for (const bet of pendingBets) {
+    for (const bet of todaysBets) {
       const espnMap = ESPN_SPORT_MAP[bet.sport];
       if (!espnMap) continue;
 
@@ -314,7 +318,7 @@ export default function DashboardClient({
       });
       setLastUpdated(new Date());
     }
-  }, [pendingBets]);
+  }, [todaysBets]);
 
   /** Refresh bet/bankroll data from our API */
   const refreshData = useCallback(async () => {
@@ -356,24 +360,11 @@ export default function DashboardClient({
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <Header stats={stats} />
 
-      {/* Global LIVE indicator when there are active games */}
-      {pendingBets.some((b) => liveScores.get(b.gameId)?.isLive) && (
-        <div className="mb-6 flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-2">
-          <span className="relative flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500" />
-          </span>
-          <span className="text-sm font-medium text-emerald-400">
-            Games in progress &mdash; scores updating live
-          </span>
-        </div>
-      )}
-
       <StatsRow stats={stats} />
 
-      {/* Live Scores section (only shows when there are pending bets) */}
-      <LiveScores
-        bets={pendingBets}
+      {/* Today's Bets — all bets placed today with live stats */}
+      <TodaysBets
+        bets={todaysBets}
         liveScores={liveScores}
         lastUpdated={lastUpdated}
       />

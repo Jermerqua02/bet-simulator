@@ -75,6 +75,15 @@
       "losses": 0,
       "pending": 8,
       "bankroll": 10069.3
+    },
+    {
+      "date": "2026-04-24",
+      "pnl": 0,
+      "betsPlaced": 10,
+      "wins": 0,
+      "losses": 0,
+      "pending": 10,
+      "bankroll": 10069.3
     }
   ]
 }
