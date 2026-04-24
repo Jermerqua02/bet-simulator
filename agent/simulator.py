@@ -9,7 +9,10 @@ from datetime import datetime, date
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .espn import fetch_scoreboard, fetch_standings, parse_games, parse_standings
+from .espn import (
+    fetch_scoreboard, fetch_standings, parse_games, parse_standings,
+    fetch_player_props, fetch_box_score, PROP_STAT_MAP,
+)
 from .odds import calculate_edge
 from .strategies import STRATEGIES
 from .bankroll import (
@@ -108,6 +111,23 @@ def place_bets(target_date: str | None = None) -> None:
 
     print(f"\n  Total pre-game events: {_BOLD}{len(all_games)}{_RESET}")
 
+    # Fetch player props for each pre-game event (if player_props strategy is enabled)
+    props_by_game: dict[str, list] = {}
+    if strategies_cfg.get("player_props", {}).get("enabled", False):
+        print(f"\n  {_DIM}Fetching player props...{_RESET}", flush=True)
+        prop_count = 0
+        for game in all_games:
+            game_id = game["gameId"]
+            sport = game["sport"]
+            try:
+                props = fetch_player_props(sport, game_id)
+                if props:
+                    props_by_game[game_id] = props
+                    prop_count += len(props)
+            except Exception as exc:
+                print(f"  {_DIM}  Props unavailable for {game['event']}: {exc}{_RESET}")
+        print(f"  {_GREEN}Fetched {prop_count} props across {len(props_by_game)} games{_RESET}")
+
     # Run each enabled strategy
     all_recs: list[dict] = []
 
@@ -121,7 +141,12 @@ def place_bets(target_date: str | None = None) -> None:
 
         print(f"  {_DIM}Running {strat_key}...{_RESET}", end=" ", flush=True)
         try:
-            recs = strat_fn(all_games, all_standings, config, current_bankroll)
+            # Pass props_by_game as kwarg; strategies that don't accept it will ignore
+            if strat_key == "player_props":
+                recs = strat_fn(all_games, all_standings, config, current_bankroll,
+                                props_by_game=props_by_game)
+            else:
+                recs = strat_fn(all_games, all_standings, config, current_bankroll)
             print(f"{_GREEN}{len(recs)} recommendations{_RESET}")
             all_recs.extend(recs)
         except Exception as exc:
@@ -140,8 +165,16 @@ def place_bets(target_date: str | None = None) -> None:
     deduped = list(seen.values())
 
     # Rank by edge descending, take top N
-    deduped.sort(key=lambda r: r["edge"], reverse=True)
-    selected = deduped[:daily_target]
+    # Reserve up to 3 slots for player props to ensure bet diversity
+    prop_recs = [r for r in deduped if r.get("betType") == "player_prop"]
+    non_prop_recs = [r for r in deduped if r.get("betType") != "player_prop"]
+    prop_recs.sort(key=lambda r: r["edge"], reverse=True)
+    non_prop_recs.sort(key=lambda r: r["edge"], reverse=True)
+
+    props_to_include = prop_recs[:3]
+    remaining_slots = daily_target - len(props_to_include)
+    selected = non_prop_recs[:remaining_slots] + props_to_include
+    selected.sort(key=lambda r: r["edge"], reverse=True)
 
     print(f"\n  {_BOLD}Selected {len(selected)}/{len(deduped)} unique recommendations:{_RESET}")
     print(f"  {'#':<4} {'Event':<30} {'Pick':<22} {'Odds':>6} {'Edge':>7} {'Stake':>8} {'Strategy':<18}")
@@ -175,6 +208,13 @@ def place_bets(target_date: str | None = None) -> None:
             "pnl": 0,
             "resolvedAt": None,
         }
+        # Include extra fields for player prop bets
+        if rec.get("betType") == "player_prop":
+            bet["player"] = rec.get("player", "")
+            bet["playerId"] = rec.get("playerId", "")
+            bet["propType"] = rec.get("propType", "")
+            bet["line"] = rec.get("line", 0)
+            bet["propSide"] = rec.get("propSide", "")
         new_bets.append(bet)
         total_stake += rec["stake"]
 
@@ -255,6 +295,7 @@ def resolve_bets() -> None:
     losses = 0
     still_pending = 0
     resolved_today = []
+    _box_score_cache: dict[str, dict] = {}  # cache box scores per "sport:gameId"
 
     for bet in bets:
         if bet.get("result") != "PENDING":
@@ -377,6 +418,59 @@ def resolve_bets() -> None:
                     bet["result"] = "WIN"
                     pnl = bet.get("payout", 0) - bet.get("stake", 0)
                 elif total_score > line:
+                    bet["result"] = "LOSS"
+                    pnl = -bet.get("stake", 0)
+                else:
+                    bet["result"] = "PUSH"
+                    pnl = 0
+
+        elif bet_type == "player_prop":
+            # Resolve player prop by fetching the box score
+            player_id = bet.get("playerId", "")
+            prop_type = bet.get("propType", "")
+            prop_line = bet.get("line", 0)
+            prop_side = bet.get("propSide", "")
+
+            if not player_id or not prop_type or not prop_side:
+                still_pending += 1
+                continue
+
+            # Fetch box score (cache per game to avoid redundant calls)
+            box_cache_key = f"{sport}:{game_id}"
+            if box_cache_key not in _box_score_cache:
+                _box_score_cache[box_cache_key] = fetch_box_score(sport, game_id)
+            box_scores = _box_score_cache[box_cache_key]
+
+            player_stats = box_scores.get(player_id)
+            if not player_stats:
+                # Player not in box score (DNP, scratched, etc.)
+                still_pending += 1
+                continue
+
+            # Sum the relevant stat(s) for this prop type
+            stat_keys = PROP_STAT_MAP.get(prop_type, [])
+            if not stat_keys:
+                still_pending += 1
+                continue
+
+            actual_value = sum(player_stats.get(k, 0) for k in stat_keys)
+
+            # Resolve based on over/under side
+            if prop_side == "over":
+                if actual_value > prop_line:
+                    bet["result"] = "WIN"
+                    pnl = bet.get("payout", 0) - bet.get("stake", 0)
+                elif actual_value < prop_line:
+                    bet["result"] = "LOSS"
+                    pnl = -bet.get("stake", 0)
+                else:
+                    bet["result"] = "PUSH"
+                    pnl = 0
+            else:  # under
+                if actual_value < prop_line:
+                    bet["result"] = "WIN"
+                    pnl = bet.get("payout", 0) - bet.get("stake", 0)
+                elif actual_value > prop_line:
                     bet["result"] = "LOSS"
                     pnl = -bet.get("stake", 0)
                 else:

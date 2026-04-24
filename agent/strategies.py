@@ -687,6 +687,225 @@ def totals_hunter(games: list, standings: dict, config: dict, bankroll: float) -
 
 
 # ---------------------------------------------------------------------------
+# 9. Player Props  -- find player prop bets with edge from vig removal
+# ---------------------------------------------------------------------------
+
+# Typical stat averages per sport (used for line-distance adjustment)
+_TYPICAL_LINES = {
+    "NBA": {
+        "Total Points": 22.0,
+        "Total Assists": 5.5,
+        "Total Rebounds": 8.0,
+        "Pts + Rebs + Asts": 35.0,
+    },
+    "MLB": {
+        "Total Strikeouts": 5.5,
+        "Total Bases": 1.5,
+    },
+    "NHL": {
+        "Total Goals": 0.5,
+        "Total Assists": 0.5,
+        "Total Points": 1.0,
+    },
+}
+
+
+def _build_prop_bet(
+    game: dict,
+    player: str,
+    player_id: str,
+    prop_type: str,
+    line: float,
+    prop_side: str,
+    odds: int,
+    implied_prob: float,
+    true_prob: float,
+    stake: float,
+    notes: str,
+) -> dict:
+    """Construct a bet recommendation dict for a player prop."""
+    edge = calculate_edge(true_prob, implied_prob)
+    side_label = prop_side.capitalize()
+    # Friendly prop type for the pick label (e.g., "Points" from "Total Points")
+    short_type = prop_type.replace("Total ", "")
+    pick = f"{player} {side_label} {line} {short_type}"
+
+    return {
+        "sport": game["sport"],
+        "gameId": game["gameId"],
+        "event": game["event"],
+        "homeTeam": game["home"].get("name", ""),
+        "awayTeam": game["away"].get("name", ""),
+        "betType": "player_prop",
+        "pick": pick,
+        "odds": odds,
+        "impliedProb": round(implied_prob, 4),
+        "trueProb": round(true_prob, 4),
+        "edge": round(edge, 4),
+        "ev": round(calculate_ev(odds, true_prob, stake), 2),
+        "payout": round(calculate_payout(odds, stake), 2),
+        "stake": round(stake, 2),
+        "strategy": "player_props",
+        "notes": notes,
+        # Extra fields for prop resolution
+        "player": player,
+        "playerId": player_id,
+        "propType": prop_type,
+        "line": line,
+        "propSide": prop_side,
+    }
+
+
+def player_props(
+    games: list,
+    standings: dict,
+    config: dict,
+    bankroll: float,
+    props_by_game: dict | None = None,
+) -> list:
+    """
+    Player prop strategy: find props where vig asymmetry and line
+    analysis suggest one side has value.
+
+    The model:
+    1. Remove vig to get fair baseline probabilities
+    2. Analyze vig distribution -- when one side carries more juice,
+       the OTHER side is where sharp value tends to hide
+    3. Apply line-distance adjustment from typical stat values
+    4. Combine into a model probability and compare to raw implied
+
+    ``props_by_game`` is a dict mapping gameId -> list of prop dicts.
+    """
+    if not props_by_game:
+        return []
+
+    bets: list[dict] = []
+    stake = config.get("defaultStake", 25)
+    max_props = 4  # Cap total prop bets per day
+    prop_min_edge = 0.02  # Lower threshold for props (2%)
+
+    # Build a game lookup for attaching game context to bets
+    game_lookup: dict[str, dict] = {g["gameId"]: g for g in games}
+
+    candidates: list[dict] = []
+
+    for game_id, prop_list in props_by_game.items():
+        game = game_lookup.get(game_id)
+        if not game:
+            continue
+
+        sport = game["sport"]
+
+        for prop in prop_list:
+            over_odds = prop["overOdds"]
+            under_odds = prop["underOdds"]
+            line = prop["line"]
+            prop_type = prop["propType"]
+
+            # Raw implied probabilities (include vig)
+            raw_over = american_to_implied(over_odds)
+            raw_under = american_to_implied(under_odds)
+            total_juice = raw_over + raw_under  # typically 1.05-1.10
+
+            if total_juice <= 1.0:
+                continue
+
+            # Fair probabilities (vig removed)
+            fair_over = raw_over / total_juice
+            fair_under = raw_under / total_juice
+
+            # --- Vig asymmetry signal ---
+            # When odds are e.g. over -130 / under +100, the book charges
+            # more vig on the over side.  This often means the under has
+            # slightly more value (the book protects against sharp under action).
+            # Measure: how much of the total vig is loaded on each side
+            vig = total_juice - 1.0
+            over_vig_share = (raw_over - fair_over) / vig if vig > 0 else 0.5
+            under_vig_share = (raw_under - fair_under) / vig if vig > 0 else 0.5
+            # Asymmetry: positive means over carries more vig (under has value)
+            vig_asymmetry = over_vig_share - under_vig_share  # range ~ -0.5 to +0.5
+
+            # Convert asymmetry to a probability nudge: +3% max per side
+            vig_nudge = vig_asymmetry * 0.06  # scale to max ~3%
+
+            # --- Line distance adjustment ---
+            # Lines far from typical averages suggest the book may have
+            # less confidence, creating small edges
+            typical = _TYPICAL_LINES.get(sport, {}).get(prop_type)
+            line_nudge = 0.0
+            if typical is not None and typical > 0:
+                distance = (line - typical) / typical
+                # High line => over is harder => nudge toward under
+                line_nudge = -distance * 0.03  # ~3% per 100% distance from typical
+                line_nudge = max(-0.04, min(0.04, line_nudge))
+
+            # --- Combine into model probabilities ---
+            # vig_nudge > 0 means under has value (add to under, subtract from over)
+            # line_nudge > 0 means over has value
+            combined_nudge = line_nudge - vig_nudge  # positive = over bias
+
+            model_over = max(0.05, min(0.95, fair_over + combined_nudge))
+            model_under = max(0.05, min(0.95, fair_under - combined_nudge))
+
+            # Edge: model prob vs raw implied (what market charges)
+            over_edge = model_over - raw_over
+            under_edge = model_under - raw_under
+
+            for side, s_odds, s_implied, s_model, s_edge in [
+                ("over", over_odds, raw_over, model_over, over_edge),
+                ("under", under_odds, raw_under, model_under, under_edge),
+            ]:
+                if s_edge >= prop_min_edge:
+                    candidates.append({
+                        "game": game,
+                        "prop": prop,
+                        "side": side,
+                        "odds": s_odds,
+                        "implied": s_implied,
+                        "model": s_model,
+                        "edge": s_edge,
+                    })
+
+    # Sort by edge descending, take top N
+    candidates.sort(key=lambda c: c["edge"], reverse=True)
+
+    for cand in candidates[:max_props]:
+        prop = cand["prop"]
+        game = cand["game"]
+        side = cand["side"]
+        s_odds = cand["odds"]
+        s_implied = cand["implied"]
+        s_model = cand["model"]
+        s_edge = cand["edge"]
+        side_label = side.capitalize()
+        short_type = prop["propType"].replace("Total ", "")
+
+        notes = (
+            f"PLAYER PROP: {prop['player']} {side_label} {prop['line']} {short_type} -- "
+            f"model prob {s_model:.1%} vs market implied {s_implied:.1%} "
+            f"from {s_odds:+d} odds. Edge: {s_edge:+.1%}. "
+            f"Over odds: {prop['overOdds']:+d}, Under odds: {prop['underOdds']:+d}. "
+            f"Game: {game['event']}."
+        )
+
+        bets.append(_build_prop_bet(
+            game=game,
+            player=prop["player"],
+            player_id=prop["playerId"],
+            prop_type=prop["propType"],
+            line=prop["line"],
+            prop_side=side,
+            odds=s_odds,
+            implied_prob=s_implied,
+            true_prob=s_model,
+            stake=stake,
+            notes=notes,
+        ))
+
+    return bets
+
+
+# ---------------------------------------------------------------------------
 # Strategy registry
 # ---------------------------------------------------------------------------
 
@@ -699,4 +918,5 @@ STRATEGIES = {
     "specialist": sport_specialist,
     "spread_value": spread_value,
     "totals": totals_hunter,
+    "player_props": player_props,
 }

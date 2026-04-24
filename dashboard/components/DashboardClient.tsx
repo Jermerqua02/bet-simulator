@@ -128,7 +128,9 @@ export default function DashboardClient({
       if (r === "WIN" || r === "LOSS") continue;
 
       const betType = (bet.betType ?? "").toLowerCase();
-      // Only auto-resolve known bet types (parlays need all legs)
+      // Only auto-resolve known bet types from game score.
+      // "player_prop" is excluded here — props require box score data
+      // and are resolved server-side by the Python agent.
       if (!["moneyline", "spread", "over", "under"].includes(betType)) continue;
 
       const score = liveScores.get(bet.gameId);

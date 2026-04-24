@@ -9,6 +9,7 @@ from __future__ import annotations
 import requests
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+import re
 
 
 # ---------------------------------------------------------------------------
@@ -28,6 +29,36 @@ _SESSION.headers.update({
 })
 
 REQUEST_TIMEOUT = 15  # seconds
+
+# Cache for athlete name lookups (athlete_id -> display name)
+_ATHLETE_CACHE: dict[str, str] = {}
+
+# Prop types we can resolve from box scores, keyed by sport
+RESOLVABLE_PROPS: dict[str, set[str]] = {
+    "NBA": {
+        "Total Points", "Total Assists", "Total Rebounds",
+        "Pts + Rebs + Asts",
+    },
+    "MLB": {
+        "Total Strikeouts", "Total Bases",
+    },
+    "NHL": {
+        "Total Goals", "Total Assists", "Total Points",
+    },
+}
+
+# Map prop type names to the box-score stat key(s) needed for resolution
+PROP_STAT_MAP: dict[str, list[str]] = {
+    "Total Points": ["points"],
+    "Total Assists": ["assists"],
+    "Total Rebounds": ["rebounds"],
+    "Pts + Rebs + Asts": ["points", "rebounds", "assists"],
+    "Total Strikeouts": ["strikeouts"],
+    "Total Bases": ["totalBases"],
+    "Total Goals": ["goals"],
+    # NHL "Total Assists" and "Total Points" use the same keys as NBA
+    # but they are sport-contextual; handled in fetch_box_score parsing
+}
 
 
 # ---------------------------------------------------------------------------
@@ -396,3 +427,331 @@ def parse_standings(raw: dict, sport_key: str) -> dict:
                 continue
 
     return teams
+
+
+# ---------------------------------------------------------------------------
+# Player props
+# ---------------------------------------------------------------------------
+
+def _resolve_athlete(ref_url: str) -> tuple[str, str]:
+    """
+    Fetch an athlete's display name from an ESPN ``$ref`` URL.
+
+    Returns ``(athlete_id, display_name)``.  Results are cached in
+    ``_ATHLETE_CACHE`` so we only hit the network once per player.
+    """
+    # Extract athlete ID from the URL (last numeric segment)
+    match = re.search(r"/athletes/(\d+)", ref_url)
+    if not match:
+        return ("", "Unknown")
+    athlete_id = match.group(1)
+
+    if athlete_id in _ATHLETE_CACHE:
+        return (athlete_id, _ATHLETE_CACHE[athlete_id])
+
+    data = _get_json(ref_url)
+    name = data.get("displayName", data.get("fullName", "Unknown"))
+    _ATHLETE_CACHE[athlete_id] = name
+    return (athlete_id, name)
+
+
+def fetch_player_props(sport_key: str, event_id: str) -> list[dict]:
+    """
+    Fetch player prop bets for a specific game from ESPN's core API.
+
+    ESPN returns props as consecutive pairs: first item is over, second is
+    under, sharing the same athlete + prop type + line.  We group them and
+    return one dict per prop with both sides' odds.
+    """
+    mapping = SPORT_MAP.get(sport_key.upper())
+    if not mapping:
+        return []
+
+    sport = mapping["sport"]
+    league = mapping["league"]
+    resolvable = RESOLVABLE_PROPS.get(sport_key.upper(), set())
+
+    url = (
+        f"http://sports.core.api.espn.com/v2/sports/{sport}/leagues/{league}"
+        f"/events/{event_id}/competitions/{event_id}/odds/100/propBets"
+    )
+    params = {"lang": "en", "region": "us", "limit": "500"}
+
+    data = _get_json(url, params)
+    if not data:
+        return []
+
+    items = data.get("items", [])
+    props: list[dict] = []
+
+    # ESPN returns props as consecutive over/under pairs for the same
+    # athlete + prop type + line.  Group by (athlete_id, prop_type, line)
+    # and collect both sides' odds.
+    raw_entries: list[dict] = []
+    for item in items:
+        try:
+            prop_type_name = _safe_get(item, "type", "name", default="")
+            if prop_type_name not in resolvable:
+                continue
+
+            athlete_ref = _safe_get(item, "athlete", "$ref", default="")
+            if not athlete_ref:
+                continue
+
+            # Extract athlete ID from URL without fetching yet (for grouping)
+            match = re.search(r"/athletes/(\d+)", athlete_ref)
+            if not match:
+                continue
+            athlete_id = match.group(1)
+
+            # Line is in odds.total.value
+            odds_obj = item.get("odds", {})
+            line = _try_float(_safe_get(odds_obj, "total", "value"))
+            if line is None:
+                # Fallback: try current.target.value
+                line = _try_float(_safe_get(item, "current", "target", "value"))
+            if line is None:
+                continue
+
+            american_str = _safe_get(odds_obj, "american", "value", default="")
+            american_odds = _try_int(american_str)
+            if american_odds is None:
+                continue
+
+            raw_entries.append({
+                "athlete_id": athlete_id,
+                "athlete_ref": athlete_ref,
+                "propType": prop_type_name,
+                "line": line,
+                "american": american_odds,
+            })
+        except Exception:
+            continue
+
+    # Group consecutive pairs: same (athlete_id, propType, line)
+    # First item in pair = over, second = under
+    i = 0
+    while i < len(raw_entries) - 1:
+        a = raw_entries[i]
+        b = raw_entries[i + 1]
+
+        if (a["athlete_id"] == b["athlete_id"]
+                and a["propType"] == b["propType"]
+                and a["line"] == b["line"]):
+            # Pair found: first is over, second is under
+            over_odds = a["american"]
+            under_odds = b["american"]
+
+            # Resolve athlete name (cached after first lookup)
+            athlete_id, player_name = _resolve_athlete(a["athlete_ref"])
+            if not athlete_id or player_name == "Unknown":
+                i += 2
+                continue
+
+            over_implied = _implied_from_american(over_odds)
+            under_implied = _implied_from_american(under_odds)
+
+            props.append({
+                "player": player_name,
+                "playerId": athlete_id,
+                "propType": a["propType"],
+                "line": a["line"],
+                "overOdds": over_odds,
+                "underOdds": under_odds,
+                "overImplied": round(over_implied, 4),
+                "underImplied": round(under_implied, 4),
+            })
+            i += 2
+        else:
+            # No pair — skip this entry
+            i += 1
+
+    return props
+
+
+def _implied_from_american(odds: int) -> float:
+    """Convert American odds to raw implied probability (includes vig)."""
+    if odds < 0:
+        return abs(odds) / (abs(odds) + 100)
+    elif odds > 0:
+        return 100 / (odds + 100)
+    return 0.5
+
+
+# ---------------------------------------------------------------------------
+# Box score for player prop resolution
+# ---------------------------------------------------------------------------
+
+def fetch_box_score(sport_key: str, event_id: str) -> dict[str, dict]:
+    """
+    Fetch box score from ESPN event summary for resolving player props.
+
+    Returns a dict keyed by player ID, where each value is a dict of
+    stat names to numeric values::
+
+        {"1966": {"points": 28, "assists": 7, "rebounds": 9}, ...}
+    """
+    mapping = SPORT_MAP.get(sport_key.upper())
+    if not mapping:
+        return {}
+
+    sport = mapping["sport"]
+    league = mapping["league"]
+
+    url = (
+        f"https://site.api.espn.com/apis/site/v2/sports/"
+        f"{sport}/{league}/summary"
+    )
+    data = _get_json(url, params={"event": event_id})
+    if not data:
+        return {}
+
+    players: dict[str, dict] = {}
+
+    # The boxscore structure differs by sport; handle each
+    boxscore = data.get("boxscore", {})
+    sport_upper = sport_key.upper()
+
+    if sport_upper == "NBA":
+        players = _parse_nba_box(boxscore)
+    elif sport_upper == "MLB":
+        players = _parse_mlb_box(boxscore, data)
+    elif sport_upper == "NHL":
+        players = _parse_nhl_box(boxscore)
+
+    return players
+
+
+def _parse_nba_box(boxscore: dict) -> dict[str, dict]:
+    """Parse NBA box score into {playerId: {points, assists, rebounds, ...}}."""
+    players: dict[str, dict] = {}
+
+    for team_block in boxscore.get("players", []):
+        for stat_group in team_block.get("statistics", []):
+            stat_keys = stat_group.get("keys", [])
+            athletes = stat_group.get("athletes", [])
+
+            for athlete in athletes:
+                athlete_info = athlete.get("athlete", {})
+                pid = athlete_info.get("id", "")
+                if not pid:
+                    continue
+
+                stats_vals = athlete.get("stats", [])
+                stat_dict: dict[str, float] = {}
+
+                for i, key in enumerate(stat_keys):
+                    if i < len(stats_vals):
+                        val = _try_float(stats_vals[i])
+                        if val is not None:
+                            stat_dict[key] = val
+
+                # Map ESPN stat keys to our normalized names
+                mapped: dict[str, float] = {}
+                # NBA keys: points, assists, rebounds (or PTS, AST, REB)
+                mapped["points"] = stat_dict.get("points",
+                                   stat_dict.get("PTS",
+                                   stat_dict.get("pts", 0.0)))
+                mapped["assists"] = stat_dict.get("assists",
+                                    stat_dict.get("AST",
+                                    stat_dict.get("ast", 0.0)))
+                mapped["rebounds"] = stat_dict.get("rebounds",
+                                     stat_dict.get("REB",
+                                     stat_dict.get("reb",
+                                     stat_dict.get("totalRebounds", 0.0))))
+
+                players[pid] = mapped
+
+    return players
+
+
+def _parse_mlb_box(boxscore: dict, full_data: dict) -> dict[str, dict]:
+    """Parse MLB box score for batting (totalBases) and pitching (strikeouts)."""
+    players: dict[str, dict] = {}
+
+    for team_block in boxscore.get("players", []):
+        for stat_group in team_block.get("statistics", []):
+            stat_type = stat_group.get("type", "")
+            stat_keys = stat_group.get("keys", [])
+            athletes = stat_group.get("athletes", [])
+
+            for athlete in athletes:
+                athlete_info = athlete.get("athlete", {})
+                pid = athlete_info.get("id", "")
+                if not pid:
+                    continue
+
+                stats_vals = athlete.get("stats", [])
+                stat_dict: dict[str, float] = {}
+
+                for i, key in enumerate(stat_keys):
+                    if i < len(stats_vals):
+                        val = _try_float(stats_vals[i])
+                        if val is not None:
+                            stat_dict[key] = val
+
+                if pid not in players:
+                    players[pid] = {}
+
+                if "batting" in stat_type.lower():
+                    # Total bases: singles + 2*doubles + 3*triples + 4*HR
+                    # ESPN may provide "totalBases" directly or we calculate
+                    tb = stat_dict.get("totalBases",
+                         stat_dict.get("TB", None))
+                    if tb is not None:
+                        players[pid]["totalBases"] = tb
+                    else:
+                        # Calculate from components if available
+                        h = stat_dict.get("hits", stat_dict.get("H", 0))
+                        doubles = stat_dict.get("doubles", stat_dict.get("2B", 0))
+                        triples = stat_dict.get("triples", stat_dict.get("3B", 0))
+                        hr = stat_dict.get("homeRuns", stat_dict.get("HR", 0))
+                        singles = h - doubles - triples - hr
+                        players[pid]["totalBases"] = singles + 2*doubles + 3*triples + 4*hr
+
+                elif "pitching" in stat_type.lower():
+                    so = stat_dict.get("strikeOuts",
+                         stat_dict.get("strikeouts",
+                         stat_dict.get("SO",
+                         stat_dict.get("K", 0))))
+                    players[pid]["strikeouts"] = so
+
+    return players
+
+
+def _parse_nhl_box(boxscore: dict) -> dict[str, dict]:
+    """Parse NHL box score into {playerId: {goals, assists, points}}."""
+    players: dict[str, dict] = {}
+
+    for team_block in boxscore.get("players", []):
+        for stat_group in team_block.get("statistics", []):
+            stat_keys = stat_group.get("keys", [])
+            athletes = stat_group.get("athletes", [])
+
+            for athlete in athletes:
+                athlete_info = athlete.get("athlete", {})
+                pid = athlete_info.get("id", "")
+                if not pid:
+                    continue
+
+                stats_vals = athlete.get("stats", [])
+                stat_dict: dict[str, float] = {}
+
+                for i, key in enumerate(stat_keys):
+                    if i < len(stats_vals):
+                        val = _try_float(stats_vals[i])
+                        if val is not None:
+                            stat_dict[key] = val
+
+                mapped: dict[str, float] = {}
+                mapped["goals"] = stat_dict.get("goals",
+                                  stat_dict.get("G", 0.0))
+                mapped["assists"] = stat_dict.get("assists",
+                                    stat_dict.get("A", 0.0))
+                mapped["points"] = stat_dict.get("points",
+                                   stat_dict.get("PTS",
+                                   stat_dict.get("P", 0.0)))
+
+                players[pid] = mapped
+
+    return players

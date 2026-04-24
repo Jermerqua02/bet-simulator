@@ -14,6 +14,7 @@ import {
   TrendingDown,
   Clock,
   Brain,
+  User,
 } from "lucide-react";
 
 interface BetModalProps {
@@ -163,6 +164,46 @@ export default function BetModal({ bet, open, onOpenChange }: BetModalProps) {
             </div>
           </div>
 
+          {/* Player Prop Details */}
+          {(bet.betType ?? "").toLowerCase() === "player_prop" && bet.player && (
+            <div className="rounded-lg bg-violet-500/5 border border-violet-500/20 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <User className="h-4 w-4 text-violet-400" />
+                <p className="text-sm font-semibold text-violet-400">
+                  Player Prop
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <DetailItem label="Player">
+                  <span className="text-sm font-medium text-zinc-200">
+                    {bet.player}
+                  </span>
+                </DetailItem>
+                {bet.propType && (
+                  <DetailItem label="Stat">
+                    <span className="text-sm text-zinc-200">
+                      {bet.propType}
+                    </span>
+                  </DetailItem>
+                )}
+                {bet.line !== undefined && bet.line !== null && (
+                  <DetailItem label="Line">
+                    <span className="text-sm font-mono text-zinc-200">
+                      {bet.line}
+                    </span>
+                  </DetailItem>
+                )}
+                {bet.propSide && (
+                  <DetailItem label="Side">
+                    <span className="text-sm font-medium text-zinc-200 capitalize">
+                      {bet.propSide}
+                    </span>
+                  </DetailItem>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Bet Details Grid */}
           <div className="grid grid-cols-2 gap-3">
             <DetailItem label="Sport">
@@ -171,7 +212,11 @@ export default function BetModal({ bet, open, onOpenChange }: BetModalProps) {
               </Badge>
             </DetailItem>
             <DetailItem label="Bet Type">
-              <span className="text-sm text-zinc-200">{bet.betType}</span>
+              <span className="text-sm text-zinc-200">
+                {(bet.betType ?? "").toLowerCase() === "player_prop"
+                  ? "Player Prop"
+                  : bet.betType}
+              </span>
             </DetailItem>
             <DetailItem label="Pick">
               <span className="text-sm font-medium text-zinc-200">

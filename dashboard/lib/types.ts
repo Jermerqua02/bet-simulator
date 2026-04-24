@@ -22,6 +22,13 @@ export interface Bet {
   pnl: number | null;
   notes: string;
   resolvedAt?: string | null;
+
+  // Player prop fields (optional, only present for player_prop betType)
+  player?: string;
+  playerId?: string;
+  propType?: string;
+  line?: number;
+  propSide?: "over" | "under";
 }
 
 export interface BetsData {

@@ -75,6 +75,9 @@ function computeResultFromScore(
 
   const betType = (bet.betType ?? "").toLowerCase();
 
+  // Player props can't be resolved from just the game score — needs box score data
+  if (betType === "player_prop") return null;
+
   if (betType === "moneyline" || betType === "") {
     const homeWon = score.homeScore > score.awayScore;
     // Match pick to home or away team
@@ -177,6 +180,16 @@ function getResultBadge(
 
   // Game is final — compute WIN/LOSS immediately from score
   if (liveScore?.isFinal) {
+    // Player props can't be resolved client-side from game score alone
+    const betType = (bet.betType ?? "").toLowerCase();
+    if (betType === "player_prop") {
+      return (
+        <Badge className="border-0 bg-amber-500/15 text-amber-400 text-xs">
+          AWAITING
+        </Badge>
+      );
+    }
+
     const computed = computeResultFromScore(bet, liveScore);
     if (computed === "WIN") {
       return (
@@ -402,11 +415,18 @@ export default function BetsTable({ bets, liveScores }: BetsTableProps) {
                     {formatDate(bet.date)}
                   </TableCell>
                   <TableCell>
-                    <Badge
-                      className={`text-xs ${getSportBadgeColor(bet.sport)}`}
-                    >
-                      {bet.sport}
-                    </Badge>
+                    <div className="flex items-center gap-1">
+                      <Badge
+                        className={`text-xs ${getSportBadgeColor(bet.sport)}`}
+                      >
+                        {bet.sport}
+                      </Badge>
+                      {(bet.betType ?? "").toLowerCase() === "player_prop" && (
+                        <Badge className="text-[10px] bg-violet-500/15 text-violet-400 border-0">
+                          PROP
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-sm text-zinc-300 max-w-[220px]">
                     <div className="flex items-center">

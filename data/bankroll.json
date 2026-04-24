@@ -1,6 +1,6 @@
 {
   "startingBankroll": 10000,
-  "currentBankroll": 10026.81,
+  "currentBankroll": 10069.3,
   "history": [
     {
       "date": "2026-04-23",
@@ -29,6 +29,52 @@
       "losses": 0,
       "pending": 8,
       "bankroll": 10026.81
+    },
+    {
+      "date": "2026-04-24",
+      "type": "resolution",
+      "pnl": 42.49,
+      "betsPlaced": 0,
+      "wins": 3,
+      "losses": 1,
+      "pending": 8,
+      "bankroll": 10069.3
+    },
+    {
+      "date": "2026-04-24",
+      "pnl": 0,
+      "betsPlaced": 8,
+      "wins": 0,
+      "losses": 0,
+      "pending": 8,
+      "bankroll": 10069.3
+    },
+    {
+      "date": "2026-04-24",
+      "pnl": 0,
+      "betsPlaced": 8,
+      "wins": 0,
+      "losses": 0,
+      "pending": 8,
+      "bankroll": 10069.3
+    },
+    {
+      "date": "2026-04-24",
+      "pnl": 0,
+      "betsPlaced": 8,
+      "wins": 0,
+      "losses": 0,
+      "pending": 8,
+      "bankroll": 10069.3
+    },
+    {
+      "date": "2026-04-24",
+      "pnl": 0,
+      "betsPlaced": 8,
+      "wins": 0,
+      "losses": 0,
+      "pending": 8,
+      "bankroll": 10069.3
     }
   ]
 }
