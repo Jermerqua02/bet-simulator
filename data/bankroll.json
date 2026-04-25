@@ -23,10 +23,10 @@
     {
       "date": "2026-04-25",
       "pnl": 14.26,
-      "betsPlaced": 0,
+      "betsPlaced": 10,
       "wins": 4,
       "losses": 6,
-      "pending": 0,
+      "pending": 10,
       "bankroll": 10083.56
     }
   ]
