@@ -159,10 +159,30 @@ export default function DashboardClient({
     (b) => (b.result ?? "").toUpperCase() === "PENDING" || b.result === null
   );
 
-  // Today's bets (all bets from today's local date)
+  // Today's bets sorted: live first, then pre-game by start time, then final/resolved
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const todaysBets = bets.filter((b) => b.date === todayStr);
+  const todaysBets = bets
+    .filter((b) => b.date === todayStr)
+    .sort((a, b) => {
+      const sa = liveScores.get(a.gameId);
+      const sb = liveScores.get(b.gameId);
+      // Priority: live (0) > pre-game (1) > final/resolved (2)
+      const rank = (s: LiveScoreData | undefined, bet: Bet) => {
+        if (s?.isLive) return 0;
+        if (s?.isPreGame) return 1;
+        const r = (bet.result ?? "").toUpperCase();
+        if (r === "WIN" || r === "LOSS") return 3;
+        return 2; // final but unresolved
+      };
+      const ra = rank(sa, a);
+      const rb = rank(sb, b);
+      if (ra !== rb) return ra - rb;
+      // Within same rank, sort by start time (soonest first)
+      const ta = sa?.startTime ? new Date(sa.startTime).getTime() : Infinity;
+      const tb = sb?.startTime ? new Date(sb.startTime).getTime() : Infinity;
+      return ta - tb;
+    });
 
   /** Auto-resolve pending bets when ESPN shows game as FINAL */
   useEffect(() => {
