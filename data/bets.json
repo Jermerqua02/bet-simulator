@@ -586,9 +586,9 @@
       "payout": 43.38,
       "strategy": "spread_value",
       "notes": "SPREAD VALUE: St. Louis Cardinals +1.5 -- model cover prob 82.7% vs implied 57.6% from -136 odds. Edge: +25.1%. Win prob: 67.7%, spread line: +1.5. Record: 14-11, Diff: -12.0.",
-      "result": "PENDING",
-      "pnl": 0,
-      "resolvedAt": null
+      "result": "LOSS",
+      "pnl": -25,
+      "resolvedAt": "2026-04-25T21:44:14.730911"
     },
     {
       "id": "20260425-NHL-008",
