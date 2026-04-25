@@ -94,6 +94,38 @@ interface EspnScoreboardResponse {
   events?: EspnEvent[];
 }
 
+/** Map prop types to ESPN box score stat labels, per sport */
+const PROP_STAT_LABELS: Record<string, Record<string, string>> = {
+  NBA: {
+    "Total Points": "PTS",
+    "Total Rebounds": "REB",
+    "Total Assists": "AST",
+    "Total 3-Point Field Goals Made": "3PT",
+    "Total Steals": "STL",
+    "Total Blocks": "BLK",
+    "Total Turnovers": "TO",
+  },
+  NHL: {
+    "Total Goals": "G",
+    "Total Assists": "A",
+    "Total Shots on Goal": "S",
+  },
+  MLB: {
+    "Total Hits": "H",
+    "Total Runs Batted In": "RBI",
+    "Total Bases": "TB",
+    "Total Strikeouts": "K",
+  },
+};
+
+/** Parse a box score stat value (handles "3-7" made-attempted format) */
+function parseStatValue(raw: string): number {
+  if (/^\d+-\d+$/.test(raw)) {
+    return parseInt(raw.split("-")[0], 10) || 0;
+  }
+  return parseFloat(raw) || 0;
+}
+
 interface DashboardClientProps {
   initialBets: Bet[];
   initialBankroll: BankrollData;
@@ -112,11 +144,16 @@ export default function DashboardClient({
     new Map()
   );
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  // Live player stats from ESPN box scores (key: "playerId_propType" → stat value)
+  const [playerStats, setPlayerStats] = useState<Map<string, number>>(
+    new Map()
+  );
   // Force re-render for the "seconds ago" display
   const [, setTick] = useState(0);
   const espnTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dataTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const boxScoreTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const pendingBets = bets.filter(
     (b) => (b.result ?? "").toUpperCase() === "PENDING" || b.result === null
@@ -325,6 +362,85 @@ export default function DashboardClient({
     }
   }, [todaysBets]);
 
+  /** Fetch ESPN box scores for player prop bets to get live stat lines */
+  const fetchBoxScores = useCallback(async () => {
+    const propBets = todaysBets.filter(
+      (b) =>
+        (b.betType ?? "").toLowerCase() === "player_prop" &&
+        b.playerId &&
+        b.propType
+    );
+    if (propBets.length === 0) return;
+
+    // Group by gameId
+    const gameProps = new Map<string, Bet[]>();
+    for (const bet of propBets) {
+      if (!gameProps.has(bet.gameId)) gameProps.set(bet.gameId, []);
+      gameProps.get(bet.gameId)!.push(bet);
+    }
+
+    const newStats = new Map<string, number>();
+
+    await Promise.all(
+      Array.from(gameProps.entries()).map(async ([gameId, betsForGame]) => {
+        const sport = betsForGame[0].sport;
+        const espn = ESPN_SPORT_MAP[sport];
+        if (!espn) return;
+
+        try {
+          const res = await fetch(
+            `https://site.api.espn.com/apis/site/v2/sports/${espn.sport}/${espn.league}/summary?event=${gameId}`
+          );
+          if (!res.ok) return;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const data: any = await res.json();
+
+          const teams = data.boxscore?.players ?? [];
+          for (const team of teams) {
+            for (const statGroup of team.statistics ?? []) {
+              const labels: string[] = statGroup.labels ?? [];
+              for (const ath of statGroup.athletes ?? []) {
+                const id = ath.athlete?.id;
+                if (!id) continue;
+
+                const matching = betsForGame.filter(
+                  (b) => b.playerId === id
+                );
+                if (matching.length === 0) continue;
+
+                const stats: string[] = ath.stats ?? [];
+                for (const bet of matching) {
+                  const label =
+                    PROP_STAT_LABELS[sport]?.[bet.propType!];
+                  if (!label) continue;
+                  const idx = labels.indexOf(label);
+                  if (idx === -1 || idx >= stats.length) continue;
+                  newStats.set(
+                    `${id}_${bet.propType}`,
+                    parseStatValue(stats[idx])
+                  );
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error(
+            `Error fetching box score for game ${gameId}:`,
+            err
+          );
+        }
+      })
+    );
+
+    if (newStats.size > 0) {
+      setPlayerStats((prev) => {
+        const merged = new Map(prev);
+        newStats.forEach((v, k) => merged.set(k, v));
+        return merged;
+      });
+    }
+  }, [todaysBets]);
+
   /** Refresh bet/bankroll data from our API */
   const refreshData = useCallback(async () => {
     try {
@@ -344,9 +460,14 @@ export default function DashboardClient({
   useEffect(() => {
     // Fetch live scores immediately on mount
     fetchLiveScores();
+    // Fetch box scores for player props (slight delay to let scores load first)
+    const boxScoreInit = setTimeout(fetchBoxScores, 2_000);
 
     // Poll ESPN every 30 seconds
     espnTimerRef.current = setInterval(fetchLiveScores, 30_000);
+
+    // Poll box scores every 30 seconds (offset by 5s from scoreboard)
+    boxScoreTimerRef.current = setInterval(fetchBoxScores, 30_000);
 
     // Poll our API for bet data every 60 seconds
     dataTimerRef.current = setInterval(refreshData, 60_000);
@@ -355,11 +476,13 @@ export default function DashboardClient({
     tickTimerRef.current = setInterval(() => setTick((t) => t + 1), 5_000);
 
     return () => {
+      clearTimeout(boxScoreInit);
       if (espnTimerRef.current) clearInterval(espnTimerRef.current);
+      if (boxScoreTimerRef.current) clearInterval(boxScoreTimerRef.current);
       if (dataTimerRef.current) clearInterval(dataTimerRef.current);
       if (tickTimerRef.current) clearInterval(tickTimerRef.current);
     };
-  }, [fetchLiveScores, refreshData]);
+  }, [fetchLiveScores, fetchBoxScores, refreshData]);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -372,6 +495,7 @@ export default function DashboardClient({
         bets={todaysBets}
         liveScores={liveScores}
         lastUpdated={lastUpdated}
+        playerStats={playerStats}
       />
 
       <BankrollChart

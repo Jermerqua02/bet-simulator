@@ -9,6 +9,7 @@ interface TodaysBetsProps {
   bets: Bet[];
   liveScores: Map<string, LiveScoreData>;
   lastUpdated: Date | null;
+  playerStats: Map<string, number>;
 }
 
 function getSportColor(sport: string): string {
@@ -170,9 +171,11 @@ function Scoreboard({ score }: { score: LiveScoreData }) {
 function KeyInsight({
   bet,
   score,
+  playerStats,
 }: {
   bet: Bet;
   score: LiveScoreData | undefined;
+  playerStats: Map<string, number>;
 }) {
   const betType = (bet.betType ?? "").toLowerCase();
   const hasScore = score && !score.isPreGame;
@@ -182,6 +185,44 @@ function KeyInsight({
     const side = bet.propSide ?? "over";
     const line = bet.line ?? 0;
     const propShort = (bet.propType ?? "").replace("Total ", "");
+
+    // Live player stat from box score
+    const statKey = bet.playerId ? `${bet.playerId}_${bet.propType}` : null;
+    const currentStat = statKey !== null ? playerStats.get(statKey) : undefined;
+
+    let statusText: string | null = null;
+    let statusColor = "text-zinc-400";
+
+    if (currentStat !== undefined) {
+      // We have live stat data
+      if (side === "over") {
+        if (currentStat > line) {
+          statusText = `${currentStat} ${propShort} — Over hit!`;
+          statusColor = "text-emerald-400";
+        } else {
+          const needed = Math.ceil(line) - currentStat;
+          statusText = `${currentStat} ${propShort} — Need ${needed}+ more`;
+          statusColor = "text-rose-400";
+        }
+      } else {
+        if (currentStat < line) {
+          statusText = `${currentStat} ${propShort} — Under holding`;
+          statusColor = "text-emerald-400";
+        } else {
+          statusText = `${currentStat} ${propShort} — Over the line`;
+          statusColor = "text-rose-400";
+        }
+      }
+    } else if (hasScore) {
+      // Game is live but no box score data yet — show the threshold
+      if (side === "over") {
+        statusText = `Needs ${Math.ceil(line)}+ ${propShort}`;
+      } else {
+        statusText = `Needs under ${line} ${propShort}`;
+      }
+      statusColor = "text-zinc-400";
+    }
+
     return (
       <div className="mt-3 rounded-lg bg-violet-500/10 border border-violet-500/20 px-4 py-3">
         <div className="flex items-center gap-2 mb-1">
@@ -199,6 +240,11 @@ function KeyInsight({
         <p className="text-sm text-zinc-500 mt-0.5">
           {formatOdds(bet.odds)}
         </p>
+        {statusText && (
+          <p className={`text-lg font-bold mt-2 ${statusColor}`}>
+            {statusText}
+          </p>
+        )}
       </div>
     );
   }
@@ -356,10 +402,12 @@ function BetCard({
   bet,
   score,
   onClick,
+  playerStats,
 }: {
   bet: Bet;
   score: LiveScoreData | undefined;
   onClick: () => void;
+  playerStats: Map<string, number>;
 }) {
   const sportColor = getSportColor(bet.sport);
   const sportLabel = getSportLabel(bet.sport);
@@ -421,7 +469,7 @@ function BetCard({
       {hasScore && <Scoreboard score={score} />}
 
       {/* Key data point — the star of the card */}
-      <KeyInsight bet={bet} score={score} />
+      <KeyInsight bet={bet} score={score} playerStats={playerStats} />
 
       {/* Stake + edge footer */}
       <div className="mt-4 flex items-center justify-between border-t border-zinc-800 pt-3">
@@ -444,6 +492,7 @@ export default function TodaysBets({
   bets,
   liveScores,
   lastUpdated,
+  playerStats,
 }: TodaysBetsProps) {
   const [selectedBet, setSelectedBet] = useState<Bet | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -502,6 +551,7 @@ export default function TodaysBets({
             key={bet.id}
             bet={bet}
             score={liveScores.get(bet.gameId)}
+            playerStats={playerStats}
             onClick={() => {
               setSelectedBet(bet);
               setModalOpen(true);
