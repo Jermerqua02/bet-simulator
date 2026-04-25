@@ -448,9 +448,9 @@
       "payout": 90.25,
       "strategy": "safe_parlay",
       "notes": "SAFE PARLAY (2-leg): Over 215.5 [over] (-112, model 95.0%) | Over 214.5 [over] (-110, model 95.0%). Combined odds: +261 (decimal 3.61). Combined true prob: 90.2%, combined implied: 27.7%, parlay edge: +62.6%. Payout: $90.25.",
-      "result": "PENDING",
-      "pnl": 0,
-      "resolvedAt": null
+      "result": "LOSS",
+      "pnl": -25,
+      "resolvedAt": "2026-04-25T20:49:32.220197"
     },
     {
       "id": "20260425-NBA-002",
@@ -563,9 +563,9 @@
       "payout": 47.32,
       "strategy": "totals",
       "notes": "TOTALS HUNTER: Over 215.5 in DET @ ORL -- model over prob 95.0% vs implied 52.8% from -112 odds. Edge: +42.2%. Line: 215.5, home diff/g: +0.6, away diff/g: +8.2.",
-      "result": "PENDING",
-      "pnl": 0,
-      "resolvedAt": null
+      "result": "WIN",
+      "pnl": 22.32,
+      "resolvedAt": "2026-04-25T20:49:32.220231"
     },
     {
       "id": "20260425-MLB-007",
