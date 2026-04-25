@@ -167,18 +167,6 @@ export default function DashboardClient({
     .sort((a, b) => {
       const sa = liveScores.get(a.gameId);
       const sb = liveScores.get(b.gameId);
-      // Priority: live (0) > pre-game (1) > final/resolved (2)
-      const rank = (s: LiveScoreData | undefined, bet: Bet) => {
-        if (s?.isLive) return 0;
-        if (s?.isPreGame) return 1;
-        const r = (bet.result ?? "").toUpperCase();
-        if (r === "WIN" || r === "LOSS") return 3;
-        return 2; // final but unresolved
-      };
-      const ra = rank(sa, a);
-      const rb = rank(sb, b);
-      if (ra !== rb) return ra - rb;
-      // Within same rank, sort by start time (soonest first)
       const ta = sa?.startTime ? new Date(sa.startTime).getTime() : Infinity;
       const tb = sb?.startTime ? new Date(sb.startTime).getTime() : Infinity;
       return ta - tb;
