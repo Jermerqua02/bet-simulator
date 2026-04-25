@@ -1,6 +1,6 @@
 {
   "startingBankroll": 10000,
-  "currentBankroll": 10035.41,
+  "currentBankroll": 10083.56,
   "history": [
     {
       "date": "2026-04-23",
@@ -22,12 +22,12 @@
     },
     {
       "date": "2026-04-25",
-      "pnl": -33.89,
+      "pnl": 14.26,
       "betsPlaced": 0,
-      "wins": 2,
-      "losses": 3,
-      "pending": 5,
-      "bankroll": 10035.41
+      "wins": 4,
+      "losses": 6,
+      "pending": 0,
+      "bankroll": 10083.56
     }
   ]
 }
