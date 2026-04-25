@@ -16,14 +16,30 @@ export default function Header({ stats }: HeaderProps) {
   return (
     <header className="mb-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
-            <BarChart3 className="h-6 w-6" />
+        <div className="flex items-center gap-4">
+          {/* Gradient icon */}
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-orange-600 shadow-lg shadow-orange-500/20">
+            <svg
+              className="h-7 w-7 text-white"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M12 2l2.4 7.2H22l-6 4.8 2.4 7.2L12 16.4l-6.4 4.8L8 14l-6-4.8h7.6z" />
+              <circle cx="18" cy="5" r="2.5" fill="currentColor" opacity="0.7" />
+            </svg>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-zinc-100">Bet Simulator</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-extrabold tracking-tight">
+                <span className="text-zinc-100">Bet</span>{" "}
+                <span className="text-orange-400">Simulator</span>
+              </h1>
+              <span className="rounded-full bg-zinc-700/80 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
+                Demo
+              </span>
+            </div>
             <p className="text-sm text-zinc-500">
-              Simulated Sports Betting &bull; No Real Money
+              Simulated sports betting &mdash; no real money on the line
             </p>
           </div>
         </div>
