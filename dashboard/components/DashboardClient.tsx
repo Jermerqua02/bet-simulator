@@ -199,17 +199,34 @@ export default function DashboardClient({
       if (r === "WIN" || r === "LOSS") continue;
 
       const betType = (bet.betType ?? "").toLowerCase();
-      // Only auto-resolve known bet types from game score.
-      // "player_prop" is excluded here — props require box score data
-      // and are resolved server-side by the Python agent.
-      if (!["moneyline", "spread", "over", "under"].includes(betType)) continue;
+      if (
+        !["moneyline", "spread", "over", "under", "player_prop"].includes(
+          betType
+        )
+      )
+        continue;
 
       const score = liveScores.get(bet.gameId);
       if (!score?.isFinal) continue;
 
       let won: boolean | null = null;
 
-      if (betType === "moneyline") {
+      if (betType === "player_prop") {
+        // Resolve using box score stats
+        const statKey = bet.playerId
+          ? `${bet.playerId}_${bet.propType}`
+          : null;
+        const currentStat =
+          statKey !== null ? playerStats.get(statKey) : undefined;
+        if (currentStat === undefined) continue; // no stat data yet
+        const line = bet.line ?? 0;
+        const side = bet.propSide ?? "over";
+        if (side === "over") {
+          won = currentStat > line;
+        } else {
+          won = currentStat < line;
+        }
+      } else if (betType === "moneyline") {
         // Determine winner from final score
         const homeWon = score.homeScore > score.awayScore;
         const pickIsHome = bet.pick === bet.homeTeam;
@@ -315,7 +332,7 @@ export default function DashboardClient({
         currentBankroll: prev.currentBankroll + totalPnl,
       }));
     }
-  }, [liveScores, bets]);
+  }, [liveScores, bets, playerStats]);
 
   const stats: DashboardStats = calculateStats(bets, bankroll);
   const strategyStats: StrategyStatsType[] = getStrategyStats(bets);
@@ -425,8 +442,9 @@ export default function DashboardClient({
             for (const statGroup of team.statistics ?? []) {
               const labels: string[] = statGroup.labels ?? [];
               for (const ath of statGroup.athletes ?? []) {
-                const id = ath.athlete?.id;
-                if (!id) continue;
+                const rawId = ath.athlete?.id;
+                if (!rawId) continue;
+                const id = String(rawId);
 
                 const matching = betsForGame.filter(
                   (b) => b.playerId === id
