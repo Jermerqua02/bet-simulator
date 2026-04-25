@@ -69,21 +69,21 @@ function StatusBadge({
 
   if (r === "WIN") {
     return (
-      <Badge className="border-0 bg-emerald-500/15 text-emerald-400 text-xs px-2 py-0.5">
+      <Badge className="border-0 rounded-full bg-emerald-500/15 text-emerald-400 text-xs px-2.5 py-1">
         WIN
       </Badge>
     );
   }
   if (r === "LOSS") {
     return (
-      <Badge className="border-0 bg-rose-500/15 text-rose-400 text-xs px-2 py-0.5">
+      <Badge className="border-0 rounded-full bg-rose-500/15 text-rose-400 text-xs px-2.5 py-1">
         LOSS
       </Badge>
     );
   }
   if (r === "PUSH") {
     return (
-      <Badge className="border-0 bg-zinc-500/15 text-zinc-300 text-xs px-2 py-0.5">
+      <Badge className="border-0 rounded-full bg-zinc-500/15 text-zinc-300 text-xs px-2.5 py-1">
         PUSH
       </Badge>
     );
@@ -91,7 +91,7 @@ function StatusBadge({
 
   if (score?.isLive) {
     return (
-      <Badge className="border-0 bg-emerald-500/15 text-emerald-400 text-xs gap-1.5 px-2 py-0.5">
+      <Badge className="border-0 rounded-full bg-emerald-500/15 text-emerald-400 text-xs gap-1.5 px-2.5 py-1">
         <span className="relative flex h-2 w-2">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -103,7 +103,7 @@ function StatusBadge({
 
   if (score?.isFinal) {
     return (
-      <Badge className="border-0 bg-amber-500/15 text-amber-400 text-xs px-2 py-0.5">
+      <Badge className="border-0 rounded-full bg-amber-500/15 text-amber-400 text-xs px-2.5 py-1">
         FINAL
       </Badge>
     );
@@ -113,7 +113,7 @@ function StatusBadge({
     const countdown = formatCountdown(score.startTime);
     if (countdown) {
       return (
-        <Badge className="border-0 bg-sky-500/20 text-sky-300 text-xs font-semibold gap-1.5 px-2.5 py-0.5">
+        <Badge className="border-0 rounded-full bg-sky-500/20 text-sky-300 text-xs font-semibold gap-1.5 px-2.5 py-1">
           <svg
             className="h-3.5 w-3.5 text-sky-400"
             fill="none"
@@ -129,14 +129,14 @@ function StatusBadge({
       );
     }
     return (
-      <Badge className="border-0 bg-zinc-500/15 text-zinc-400 text-xs px-2 py-0.5">
+      <Badge className="border-0 rounded-full bg-zinc-500/15 text-zinc-400 text-xs px-2.5 py-1">
         PRE-GAME
       </Badge>
     );
   }
 
   return (
-    <Badge className="border-0 bg-amber-500/15 text-amber-400 text-xs px-2 py-0.5">
+    <Badge className="border-0 rounded-full bg-amber-500/15 text-amber-400 text-xs px-2.5 py-1">
       PENDING
     </Badge>
   );
@@ -145,21 +145,21 @@ function StatusBadge({
 /** Scoreboard display — prominent score */
 function Scoreboard({ score }: { score: LiveScoreData }) {
   return (
-    <div className="flex items-center justify-between rounded-lg bg-zinc-950/80 px-4 py-3 mt-3">
-      <div className="text-center flex-1">
-        <p className="text-xs text-zinc-500 mb-0.5 truncate">{score.awayTeam}</p>
-        <p className="text-2xl font-bold tabular-nums text-zinc-100">
+    <div className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/60 px-5 py-4 mt-4">
+      <div className="flex-1">
+        <p className="text-xs text-zinc-500 mb-1 truncate">{score.awayTeam}</p>
+        <p className="text-4xl font-bold tabular-nums text-zinc-100">
           {score.awayScore}
         </p>
       </div>
-      <div className="text-center px-3">
+      <div className="text-center px-4">
         <p className="text-xs font-medium text-zinc-500">
           {score.isLive ? score.statusText : score.isFinal ? "FINAL" : "VS"}
         </p>
       </div>
-      <div className="text-center flex-1">
-        <p className="text-xs text-zinc-500 mb-0.5 truncate">{score.homeTeam}</p>
-        <p className="text-2xl font-bold tabular-nums text-zinc-100">
+      <div className="flex-1 text-right">
+        <p className="text-xs text-zinc-500 mb-1 truncate">{score.homeTeam}</p>
+        <p className="text-4xl font-bold tabular-nums text-zinc-100">
           {score.homeScore}
         </p>
       </div>
@@ -538,36 +538,37 @@ function BetCard({
     pnlColor = pnl >= 0 ? "text-emerald-400" : "text-rose-400";
   }
 
+  const strategyName = bet.strategy
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+
   return (
     <div
-      className={`rounded-xl border ${sportColor} bg-zinc-900/80 p-5 cursor-pointer transition-colors hover:bg-zinc-800/80 ${
-        score?.isLive ? "ring-1 ring-emerald-500/20" : ""
-      }`}
+      className={`rounded-2xl border border-zinc-800 bg-zinc-900 p-6 cursor-pointer transition-colors hover:bg-zinc-800/60`}
       onClick={onClick}
     >
-      {/* Header: sport + status + P&L */}
+      {/* Header: sport + status on left, event on right */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span
-            className={`text-xs font-semibold uppercase px-2 py-0.5 rounded ${sportLabel.bg} ${sportLabel.text}`}
+            className={`text-xs font-semibold uppercase px-2.5 py-1 rounded-full ${sportLabel.bg} ${sportLabel.text}`}
           >
             {bet.sport}
           </span>
           <StatusBadge bet={bet} score={score} />
+          {pnlDisplay && (
+            <span className={`text-sm font-bold tabular-nums ${pnlColor}`}>
+              {pnlDisplay}
+            </span>
+          )}
         </div>
-        {pnlDisplay && (
-          <span className={`text-base font-bold tabular-nums ${pnlColor}`}>
-            {pnlDisplay}
-          </span>
-        )}
+        <span className="text-sm font-medium text-zinc-400">{bet.event}</span>
       </div>
 
-      {/* Event name + start time */}
-      <div className="text-sm text-zinc-400 mt-2">
-        {bet.event}
-      </div>
+      {/* Pre-game start time */}
       {score?.isPreGame && score.startTime && (
-        <div className="text-sm text-sky-400/80 font-medium mt-1">
+        <div className="text-sm text-sky-400/80 font-medium mt-2">
           Starts{" "}
           {new Date(score.startTime).toLocaleTimeString([], {
             hour: "numeric",
@@ -583,16 +584,16 @@ function BetCard({
       <KeyInsight bet={bet} score={score} playerStats={playerStats} liveScores={liveScores} />
 
       {/* Stake + edge footer */}
-      <div className="mt-4 flex items-center justify-between border-t border-zinc-800 pt-3">
-        <span className="text-xs text-zinc-500">
-          Stake: ${bet.stake.toFixed(2)}
+      <div className="mt-5 flex items-center justify-between border-t border-zinc-800 pt-4">
+        <span className="text-sm text-zinc-500">
+          Stake: <span className="font-medium text-zinc-300">${bet.stake.toFixed(2)}</span>
         </span>
-        <span className="text-xs text-zinc-500">
-          Edge: {(bet.edge * 100).toFixed(1)}% &middot;{" "}
-          {bet.strategy
-            .split("_")
-            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(" ")}
+        <span className="text-sm text-zinc-500">
+          Edge:{" "}
+          <span className="font-medium text-emerald-400">
+            {(bet.edge * 100).toFixed(1)}%
+          </span>
+          {" "}&middot; {strategyName}
         </span>
       </div>
     </div>
@@ -628,10 +629,10 @@ export default function TodaysBets({
   const pending = bets.length - wins - losses;
 
   return (
-    <div className="mb-8 rounded-xl border border-zinc-800 bg-zinc-900/80 p-6">
-      <div className="flex items-center justify-between mb-5">
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-zinc-100">
+          <h2 className="text-2xl font-bold text-zinc-100">
             Today&apos;s Bets
           </h2>
           <span className="text-sm text-zinc-500">
@@ -656,7 +657,7 @@ export default function TodaysBets({
         )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {bets.map((bet) => (
           <BetCard
             key={bet.id}
