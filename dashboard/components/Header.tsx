@@ -1,5 +1,6 @@
 import { TrendingUp, TrendingDown, BarChart3, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import ThemeToggle from "@/components/ThemeToggle";
 import type { DashboardStats } from "@/lib/types";
 import { formatCurrency, formatPercent } from "@/lib/data";
 
@@ -28,6 +29,7 @@ export default function Header({ stats }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-4">
+          <ThemeToggle />
           <div className="text-right">
             <p className="text-xs uppercase tracking-wider text-zinc-500">
               Current Bankroll
