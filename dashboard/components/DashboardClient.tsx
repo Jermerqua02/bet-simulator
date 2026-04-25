@@ -159,18 +159,34 @@ export default function DashboardClient({
     (b) => (b.result ?? "").toUpperCase() === "PENDING" || b.result === null
   );
 
-  // Today's bets sorted: live first, then pre-game by start time, then final/resolved
+  // Today's bets sorted by game start time (chronological).
+  // Group by gameId so all bets on the same game stay together.
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const todaysBets = bets
-    .filter((b) => b.date === todayStr)
-    .sort((a, b) => {
-      const sa = liveScores.get(a.gameId);
-      const sb = liveScores.get(b.gameId);
-      const ta = sa?.startTime ? new Date(sa.startTime).getTime() : Infinity;
-      const tb = sb?.startTime ? new Date(sb.startTime).getTime() : Infinity;
-      return ta - tb;
+  const todaysBets = (() => {
+    const filtered = bets.filter((b) => b.date === todayStr);
+
+    // Build a start-time lookup per gameId
+    const gameStartTime = new Map<string, number>();
+    for (const bet of filtered) {
+      if (!gameStartTime.has(bet.gameId)) {
+        const s = liveScores.get(bet.gameId);
+        gameStartTime.set(
+          bet.gameId,
+          s?.startTime ? new Date(s.startTime).getTime() : Infinity
+        );
+      }
+    }
+
+    return filtered.sort((a, b) => {
+      const ta = gameStartTime.get(a.gameId) ?? Infinity;
+      const tb = gameStartTime.get(b.gameId) ?? Infinity;
+      if (ta !== tb) return ta - tb;
+      // Same game — keep together, sort by gameId then bet id
+      if (a.gameId !== b.gameId) return a.gameId.localeCompare(b.gameId);
+      return a.id.localeCompare(b.id);
     });
+  })();
 
   /** Auto-resolve pending bets when ESPN shows game as FINAL */
   useEffect(() => {
