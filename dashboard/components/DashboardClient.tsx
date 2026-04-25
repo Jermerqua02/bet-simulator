@@ -200,7 +200,9 @@ export default function DashboardClient({
       if (r === "WIN" || r === "LOSS") continue;
 
       const betType = (bet.betType ?? "").toLowerCase();
+      const isParlay = betType.includes("parlay");
       if (
+        !isParlay &&
         !["moneyline", "spread", "over", "under", "player_prop"].includes(
           betType
         )
@@ -208,11 +210,65 @@ export default function DashboardClient({
         continue;
 
       const score = liveScores.get(bet.gameId);
-      if (!score?.isFinal) continue;
+      if (!isParlay && !score?.isFinal) continue;
 
       let won: boolean | null = null;
 
-      if (betType === "player_prop") {
+      if (isParlay) {
+        // Parlay: all legs must win. Parse legs from pick string.
+        const legs = bet.pick.split(" + ").map((l) => l.trim());
+        let allResolved = true;
+        let allWon = true;
+
+        // Helper: find score by team name across liveScores
+        const findScore = (team: string): LiveScoreData | undefined => {
+          for (const [, s] of liveScores) {
+            if (
+              s.homeTeam.includes(team) ||
+              s.awayTeam.includes(team) ||
+              team.includes(s.homeTeam) ||
+              team.includes(s.awayTeam)
+            )
+              return s;
+          }
+          return undefined;
+        };
+
+        for (const leg of legs) {
+          const overM = leg.match(/^Over\s+([\d.]+)$/i);
+          const underM = leg.match(/^Under\s+([\d.]+)$/i);
+          const spreadM = leg.match(/^(.+?)\s+([+-][\d.]+)$/);
+
+          if (overM || underM) {
+            const line = parseFloat((overM ?? underM)![1]);
+            const gs = score; // same-game totals
+            if (!gs?.isFinal) { allResolved = false; break; }
+            const total = gs.homeScore + gs.awayScore;
+            if (overM ? total <= line : total >= line) allWon = false;
+          } else if (spreadM) {
+            const team = spreadM[1].trim();
+            const sLine = parseFloat(spreadM[2]);
+            const gs = findScore(team) ?? score;
+            if (!gs?.isFinal) { allResolved = false; break; }
+            const isHome =
+              gs.homeTeam.includes(team) || team.includes(gs.homeTeam);
+            const pScore = isHome ? gs.homeScore : gs.awayScore;
+            const oScore = isHome ? gs.awayScore : gs.homeScore;
+            if (pScore + sLine <= oScore) allWon = false;
+          } else {
+            // Moneyline leg
+            const gs = findScore(leg) ?? score;
+            if (!gs?.isFinal) { allResolved = false; break; }
+            const isHome =
+              gs.homeTeam.includes(leg) || leg.includes(gs.homeTeam);
+            const homeWon = gs.homeScore > gs.awayScore;
+            if (isHome ? !homeWon : homeWon) allWon = false;
+          }
+        }
+
+        if (!allResolved) continue;
+        won = allWon;
+      } else if (betType === "player_prop") {
         // Resolve using box score stats
         const statKey = bet.playerId
           ? `${bet.playerId}_${bet.propType}`
@@ -227,6 +283,8 @@ export default function DashboardClient({
         } else {
           won = currentStat < line;
         }
+      } else if (!score?.isFinal) {
+        continue;
       } else if (betType === "moneyline") {
         // Determine winner from final score
         const homeWon = score.homeScore > score.awayScore;
