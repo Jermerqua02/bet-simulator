@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Header from "@/components/Header";
 import StatsRow from "@/components/StatsRow";
 import BankrollChart from "@/components/BankrollChart";
@@ -108,6 +108,7 @@ const PROP_STAT_LABELS: Record<string, Record<string, string>> = {
   NHL: {
     "Total Goals": "G",
     "Total Assists": "A",
+    "Total Points": "G+A",
     "Total Shots on Goal": "S",
   },
   MLB: {
@@ -163,7 +164,7 @@ export default function DashboardClient({
   // Group by gameId so all bets on the same game stay together.
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const todaysBets = (() => {
+  const todaysBets = useMemo(() => {
     const filtered = bets.filter((b) => b.date === todayStr);
 
     // Build a start-time lookup per gameId
@@ -186,7 +187,7 @@ export default function DashboardClient({
       if (a.gameId !== b.gameId) return a.gameId.localeCompare(b.gameId);
       return a.id.localeCompare(b.id);
     });
-  })();
+  }, [bets, todayStr, liveScores]);
 
   /** Auto-resolve pending bets when ESPN shows game as FINAL */
   useEffect(() => {
@@ -456,6 +457,26 @@ export default function DashboardClient({
                   const label =
                     PROP_STAT_LABELS[sport]?.[bet.propType!];
                   if (!label) continue;
+
+                  // Handle composite stats like NHL "G+A" (Goals + Assists)
+                  if (label.includes("+")) {
+                    const parts = label.split("+");
+                    let total = 0;
+                    let valid = true;
+                    for (const p of parts) {
+                      const idx = labels.indexOf(p);
+                      if (idx === -1 || idx >= stats.length) {
+                        valid = false;
+                        break;
+                      }
+                      total += parseStatValue(stats[idx]);
+                    }
+                    if (valid) {
+                      newStats.set(`${id}_${bet.propType}`, total);
+                    }
+                    continue;
+                  }
+
                   const idx = labels.indexOf(label);
                   if (idx === -1 || idx >= stats.length) continue;
                   newStats.set(
@@ -501,15 +522,14 @@ export default function DashboardClient({
 
   // Set up polling
   useEffect(() => {
-    // Fetch live scores immediately on mount
+    // Fetch live scores and box scores immediately on mount
     fetchLiveScores();
-    // Fetch box scores for player props (slight delay to let scores load first)
-    const boxScoreInit = setTimeout(fetchBoxScores, 2_000);
+    fetchBoxScores();
 
     // Poll ESPN every 30 seconds
     espnTimerRef.current = setInterval(fetchLiveScores, 30_000);
 
-    // Poll box scores every 30 seconds (offset by 5s from scoreboard)
+    // Poll box scores every 30 seconds
     boxScoreTimerRef.current = setInterval(fetchBoxScores, 30_000);
 
     // Poll our API for bet data every 60 seconds
@@ -519,7 +539,6 @@ export default function DashboardClient({
     tickTimerRef.current = setInterval(() => setTick((t) => t + 1), 5_000);
 
     return () => {
-      clearTimeout(boxScoreInit);
       if (espnTimerRef.current) clearInterval(espnTimerRef.current);
       if (boxScoreTimerRef.current) clearInterval(boxScoreTimerRef.current);
       if (dataTimerRef.current) clearInterval(dataTimerRef.current);
