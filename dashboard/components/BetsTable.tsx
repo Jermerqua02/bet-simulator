@@ -282,10 +282,17 @@ export default function BetsTable({ bets, liveScores }: BetsTableProps) {
       }
     }
 
-    // Sort by date descending
-    filtered.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
+    // Sort by date descending, then by game start time ascending within each date
+    filtered.sort((a, b) => {
+      const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      const sa = liveScores?.get(a.gameId);
+      const sb = liveScores?.get(b.gameId);
+      const ta = sa?.startTime ? new Date(sa.startTime).getTime() : Infinity;
+      const tb = sb?.startTime ? new Date(sb.startTime).getTime() : Infinity;
+      if (ta !== tb) return ta - tb;
+      return a.gameId.localeCompare(b.gameId);
+    });
 
     return filtered;
   }, [bets, sportFilter, strategyFilter, resultFilter, liveScores]);
