@@ -494,9 +494,9 @@
       "payout": 47.73,
       "strategy": "totals",
       "notes": "TOTALS HUNTER: Over 214.5 in OKC @ PHX -- model over prob 95.0% vs implied 52.4% from -110 odds. Edge: +42.6%. Line: 214.5, home diff/g: +1.5, away diff/g: +11.1.",
-      "result": "PENDING",
-      "pnl": 0,
-      "resolvedAt": null
+      "result": "WIN",
+      "pnl": 22.73,
+      "resolvedAt": "2026-04-25T22:46:28.617475"
     },
     {
       "id": "20260425-NBA-004",
