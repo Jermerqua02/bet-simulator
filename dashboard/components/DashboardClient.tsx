@@ -159,8 +159,9 @@ export default function DashboardClient({
     (b) => (b.result ?? "").toUpperCase() === "PENDING" || b.result === null
   );
 
-  // Today's bets (all bets from today's date)
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // Today's bets (all bets from today's local date)
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const todaysBets = bets.filter((b) => b.date === todayStr);
 
   /** Auto-resolve pending bets when ESPN shows game as FINAL */
