@@ -172,10 +172,12 @@ function KeyInsight({
   bet,
   score,
   playerStats,
+  liveScores,
 }: {
   bet: Bet;
   score: LiveScoreData | undefined;
   playerStats: Map<string, number>;
+  liveScores: Map<string, LiveScoreData>;
 }) {
   const betType = (bet.betType ?? "").toLowerCase();
   const hasScore = score && !score.isPreGame;
@@ -336,9 +338,27 @@ function KeyInsight({
   }
 
   if (betType.includes("parlay")) {
+    const legs = bet.pick.split(" + ");
+
+    // Find a LiveScoreData entry matching a team name
+    const findScoreForTeam = (
+      teamName: string
+    ): LiveScoreData | undefined => {
+      for (const [, s] of liveScores) {
+        if (
+          s.homeTeam.includes(teamName) ||
+          s.awayTeam.includes(teamName) ||
+          teamName.includes(s.homeTeam) ||
+          teamName.includes(s.awayTeam)
+        )
+          return s;
+      }
+      return undefined;
+    };
+
     return (
       <div className="mt-3">
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-2">
           <span className="text-xs font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
             PARLAY
           </span>
@@ -346,9 +366,98 @@ function KeyInsight({
             {formatOdds(bet.odds)}
           </span>
         </div>
-        <p className="text-sm font-medium text-zinc-200 leading-relaxed">
-          {bet.pick}
-        </p>
+        <div className="space-y-2">
+          {legs.map((leg, i) => {
+            const l = leg.trim();
+            let statusText: string | null = null;
+            let statusColor = "text-zinc-400";
+
+            const overMatch = l.match(/^Over\s+([\d.]+)$/i);
+            const underMatch = l.match(/^Under\s+([\d.]+)$/i);
+            const spreadMatch = l.match(/^(.+?)\s+([+-][\d.]+)$/);
+
+            if (overMatch || underMatch) {
+              // Over/Under leg — use the bet's game score
+              const line = parseFloat((overMatch ?? underMatch)![1]);
+              if (score && !score.isPreGame) {
+                const t = score.homeScore + score.awayScore;
+                if (overMatch) {
+                  statusText =
+                    t > line
+                      ? `Total: ${t} — Over hit!`
+                      : `Total: ${t} — Need ${(line - t + 0.5).toFixed(1)} more`;
+                  statusColor =
+                    t > line ? "text-emerald-400" : "text-rose-400";
+                } else {
+                  statusText =
+                    t < line
+                      ? `Total: ${t} — Under holding`
+                      : `Total: ${t} — Over the line`;
+                  statusColor =
+                    t < line ? "text-emerald-400" : "text-rose-400";
+                }
+              }
+            } else if (spreadMatch) {
+              // Spread leg
+              const teamName = spreadMatch[1].trim();
+              const spreadLine = parseFloat(spreadMatch[2]);
+              const gs = findScoreForTeam(teamName) ?? score;
+              if (gs && !gs.isPreGame) {
+                const pickIsHome =
+                  gs.homeTeam.includes(teamName) ||
+                  teamName.includes(gs.homeTeam);
+                const pickScore = pickIsHome
+                  ? gs.homeScore
+                  : gs.awayScore;
+                const oppScore = pickIsHome
+                  ? gs.awayScore
+                  : gs.homeScore;
+                const margin = pickScore - oppScore;
+                const covering = margin + spreadLine > 0;
+                statusText = covering
+                  ? `Covering (${margin > 0 ? "+" : ""}${margin})`
+                  : `Not covering (${margin > 0 ? "+" : ""}${margin})`;
+                statusColor = covering
+                  ? "text-emerald-400"
+                  : "text-rose-400";
+              }
+            } else {
+              // Moneyline leg — plain team name
+              const gs = findScoreForTeam(l) ?? score;
+              if (gs && !gs.isPreGame) {
+                const pickIsHome =
+                  gs.homeTeam.includes(l) || l.includes(gs.homeTeam);
+                const pickIsAway =
+                  gs.awayTeam.includes(l) || l.includes(gs.awayTeam);
+                if (pickIsHome || pickIsAway) {
+                  const homeW = gs.homeScore > gs.awayScore;
+                  const tied = gs.homeScore === gs.awayScore;
+                  if (tied) {
+                    statusText = "Tied";
+                    statusColor = "text-amber-400";
+                  } else {
+                    const winning = pickIsHome ? homeW : !homeW;
+                    statusText = winning ? "Winning" : "Losing";
+                    statusColor = winning
+                      ? "text-emerald-400"
+                      : "text-rose-400";
+                  }
+                }
+              }
+            }
+
+            return (
+              <div key={i}>
+                <p className="text-sm font-medium text-zinc-200">{l}</p>
+                {statusText && (
+                  <p className={`text-base font-bold ${statusColor}`}>
+                    {statusText}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -403,11 +512,13 @@ function BetCard({
   score,
   onClick,
   playerStats,
+  liveScores,
 }: {
   bet: Bet;
   score: LiveScoreData | undefined;
   onClick: () => void;
   playerStats: Map<string, number>;
+  liveScores: Map<string, LiveScoreData>;
 }) {
   const sportColor = getSportColor(bet.sport);
   const sportLabel = getSportLabel(bet.sport);
@@ -469,7 +580,7 @@ function BetCard({
       {hasScore && <Scoreboard score={score} />}
 
       {/* Key data point — the star of the card */}
-      <KeyInsight bet={bet} score={score} playerStats={playerStats} />
+      <KeyInsight bet={bet} score={score} playerStats={playerStats} liveScores={liveScores} />
 
       {/* Stake + edge footer */}
       <div className="mt-4 flex items-center justify-between border-t border-zinc-800 pt-3">
@@ -552,6 +663,7 @@ export default function TodaysBets({
             bet={bet}
             score={liveScores.get(bet.gameId)}
             playerStats={playerStats}
+            liveScores={liveScores}
             onClick={() => {
               setSelectedBet(bet);
               setModalOpen(true);
